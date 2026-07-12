@@ -1,0 +1,4 @@
+# dramasub runtime dependencies — keep this list minimal (see AGENTS.md).
+pysubs2>=1.6.1   # subtitle parsing (SRT and ASS/SSA), preserves timing/styling
+requests>=2.31.0 # HTTP: Ollama API, TMDB, Wikipedia
+PyYAML>=6.0      # project.yaml / bible.yaml
