@@ -45,15 +45,18 @@ python -m dramasub.cli --help
 
 ```bash
 # 1. Create a project (defaults: source ko, target vi, model qwen3.6:latest)
-python -m dramasub.cli init ./my-show --title "See You at Work Tomorrow" --tmdb-id 123456
+python -m dramasub.cli init ./my-show --title "My Drama" --tmdb-id 123456
 
-# 2. (Optional) fetch online context into the cache
+# 2. (Optional) fetch online context into the cache — see "Online context" below
 export TMDB_API_KEY=...
 python -m dramasub.cli context ./my-show --season 1 \
-    --wiki-source "내일 봐요 사장님" --wiki-target "..."
+    --wiki-source "<source-edition article title>" --wiki-target "<target-edition title>"
 
 # 3. Translate an episode (two-pass). Use -v to see per-chunk progress.
 python -m dramasub.cli -v translate ./my-show --episode 1 path/to/E01.ko.srt
+
+#    ...or a fast one-pass "direct" translate (no pass 1, TMDB context only):
+python -m dramasub.cli -v translate ./my-show --episode 1 path/to/E01.ko.srt --direct
 
 # 4. Inspect the accumulated bible (hand-edit the YAML to correct it)
 python -m dramasub.cli bible ./my-show
@@ -87,6 +90,58 @@ Quality features drawn from professional subtitling practice: character names
 are frozen on first sight and reused verbatim; pass 1 flags narrators so
 commentary is rendered in the third person; and lines over the ~42-char reading
 limit are re-requested more concisely rather than truncated.
+
+## Online context (TMDB)
+
+Online context is optional but improves quality a lot (see below). TMDB is the
+primary source; supply a credential via the `TMDB_API_KEY` environment variable
+(a local `.env` you `source`, or your shell) or `tmdb_api_key` in `project.yaml`.
+
+**Which credential to use.** TMDB's API settings page shows two. Use the
+**API Read Access Token** (v4 auth) — the long token beginning `eyJ…`:
+
+```bash
+export TMDB_API_KEY="eyJhbGciOiJIUzI1NiJ9...."
+```
+
+(The legacy **API Key** — the ~32-char hex string on the same page — also works;
+dramasub auto-detects which one you provided.)
+
+Fetched data (series overview, cast, episode synopses, in both source and
+target languages) is cached under `<project>/cache/` and reused fully offline;
+re-fetch only with `context --refresh`.
+
+## Translation modes: what context buys you
+
+Three ways to run the same episode, from cheapest to richest. Observed on a real
+Korean→Vietnamese office drama (examples anonymized with the placeholder name
+`홍길동` / *Hong Gil-dong*):
+
+| | One-pass `--direct` | Two-pass, no TMDB | Two-pass + TMDB |
+|---|---|---|---|
+| Pass-1 analysis / bible | ✗ | ✓ | ✓ |
+| Online context | TMDB only | ✗ | ✓ |
+| Model calls / episode | ~½× | 1× | 1× + fetch |
+| Names | correct **while** in the prompt | **guessed**, e.g. `Hong Gildong` | **official**, `Hong Gil-dong` |
+| Cross-episode consistency | none (nothing frozen) | frozen after first sight | frozen from official spelling |
+| Register / address | weakest | good | good |
+| Full names not in the subtitle | ✗ | ✗ | **recovered from cast** (e.g. a given-name-only line gets its surname) |
+
+What we actually saw:
+
+- **No context** guesses romanizations ad hoc (`Hong Gildong`), occasionally
+  mistranslates a job-title term literally (a rank word rendered as
+  "responsibility"), and sometimes picks an odd register (an archaic "you").
+- **+ TMDB** pins names to the official cast spellings, recovers a surname the
+  subtitle never says (the cast list supplies it), fixes the title term, and
+  reads more naturally.
+- **`--direct`** is the cheapest and still gets names right *while TMDB sits in
+  the prompt* — but with no bible it freezes nothing, so consistency isn't
+  guaranteed across chunks or episodes, lines run longer, and subtext/register
+  are weaker. Good for a fast draft; two-pass + TMDB is best for a finished sub.
+
+(`--direct` is a lightweight one-pass path; the dedicated small-model real-time
+mode remains on the backlog per [AGENTS.md](AGENTS.md).)
 
 ## Design notes
 
