@@ -202,6 +202,7 @@ def _translate_chunk(
     )
     address_rows = bible.address_rows_for(canonical)
     glossary_rows = _relevant_glossary(bible, source_map.values())
+    name_rows = bible.name_renderings(chunk_names)
 
     base_values = {
         "source_language": project.source_language,
@@ -210,6 +211,7 @@ def _translate_chunk(
         "series_context": series_context or "(none)",
         "prev_summary": prev_summary or "(start of episode)",
         "characters": _format_characters(present_chars),
+        "names": _format_names(name_rows),
         "address": _format_address(address_rows),
         "glossary": _format_glossary(glossary_rows),
         "prev_context": _format_prev(chunk.prev, translations),
@@ -343,6 +345,12 @@ def _format_characters(chars: list[dict[str, Any]]) -> str:
             line += f" (aka {', '.join(char['aliases'])})"
         out.append(line)
     return "\n".join(out)
+
+
+def _format_names(rows: list[tuple[str, str]]) -> str:
+    if not rows:
+        return "(no frozen name renderings yet; keep any names you use consistent)"
+    return "\n".join(f"- {src} = {tgt}" for src, tgt in rows)
 
 
 def _format_address(rows: list[dict[str, Any]]) -> str:

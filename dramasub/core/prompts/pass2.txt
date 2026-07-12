@@ -20,6 +20,9 @@ ${prev_summary}
 ## Characters in this scene
 ${characters}
 
+## Character names — use these exact ${target_language} spellings, every time
+${names}
+
 ## Address terms to use (directed: how the speaker refers to self and to the listener)
 ${address}
 

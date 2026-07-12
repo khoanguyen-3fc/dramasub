@@ -84,6 +84,19 @@ class Bible:
                 result.append(char)
         return result
 
+    def name_renderings(self, names: set[str]) -> list[tuple[str, str]]:
+        """``(name, target)`` pairs for present characters with a frozen rendering.
+
+        Injected into every pass-2 chunk so a character's target-language name
+        stays byte-identical everywhere it appears.
+        """
+        out: list[tuple[str, str]] = []
+        for char in self.characters_for(names):
+            target = char.get("target")
+            if char.get("name") and target:
+                out.append((char["name"], target))
+        return out
+
     def address_rows_for(self, names: set[str]) -> list[dict[str, Any]]:
         """Directed address rows where both ``from`` and ``to`` are in *names*.
 
@@ -101,16 +114,24 @@ class Bible:
         self,
         name: str,
         *,
+        target: str | None = None,
         role: str | None = None,
         aliases: list[str] | None = None,
         note: str | None = None,
     ) -> str | None:
-        """Add a character or fill in missing fields. Returns a change note."""
+        """Add a character or fill in missing fields. Returns a change note.
+
+        ``target`` is the frozen target-language rendering of the name. Once
+        set it is never overwritten automatically (only filled if absent), so
+        a name can't drift between episodes — the user hand-edits to change it.
+        """
         if not name:
             return None
         existing = _find(self.characters, name=name)
         if existing is None:
             entry: dict[str, Any] = {"name": name}
+            if target:
+                entry["target"] = target
             if role:
                 entry["role"] = role
             if aliases:
@@ -118,8 +139,11 @@ class Bible:
             if note:
                 entry["note"] = note
             self.characters.append(entry)
-            return f"added character {name!r}"
-        return _fill_missing(existing, role=role, aliases=aliases, note=note, label=name)
+            rendered = f" = {target!r}" if target else ""
+            return f"added character {name!r}{rendered}"
+        return _fill_missing(
+            existing, target=target, role=role, aliases=aliases, note=note, label=name
+        )
 
     def add_or_update_relationship(
         self, frm: str, to: str, *, kind: str | None = None, note: str | None = None
@@ -215,6 +239,7 @@ class Bible:
         for char in updates.get("characters", []) or []:
             note = self.add_or_update_character(
                 char.get("name", ""),
+                target=char.get("target"),
                 role=char.get("role"),
                 aliases=char.get("aliases"),
                 note=char.get("note"),

@@ -1,5 +1,5 @@
 # pass1 — episode context extraction
-# version: 1 — initial two-pass pipeline
+# version: 2 — characters carry a frozen target-language name rendering
 ---
 You are a subtitle-localization analyst. You read numbered dialogue lines from a
 drama episode in ${source_language} and extract structured context that a
@@ -42,7 +42,7 @@ Return a SINGLE JSON object (no prose, no markdown) with exactly these keys:
   ],
   "proposed_updates": {
     "characters": [
-      {"name": "...", "role": "short role/description", "aliases": ["..."], "note": "..."}
+      {"name": "canonical name (prefer ${source_language} script)", "target": "the single fixed ${target_language} rendering of the name to use everywhere", "role": "short role/description", "aliases": ["..."], "note": "..."}
     ],
     "relationships": [
       {"from": "...", "to": "...", "type": "e.g. colleague, sibling, romantic", "note": "..."}
@@ -60,6 +60,8 @@ Return a SINGLE JSON object (no prose, no markdown) with exactly these keys:
 
 Rules:
 - Use canonical character names consistently (prefer the ones already known).
+- For every character give a single ``target`` rendering of the name and use
+  it consistently; this spelling will be frozen and reused in later episodes.
 - Only include an address row when you can infer BOTH the self-term and the
   other-term in ${target_language}. Flag confessions, fights, or the first
   switch to informal speech as address updates with a note.
