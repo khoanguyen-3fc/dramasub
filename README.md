@@ -77,7 +77,8 @@ summary.txt     recap that feeds the next episode's context
 ## Configuration
 
 `project.yaml` holds per-project settings — languages, `model`, `num_ctx`,
-`keep_alive`, `honorific_policy` (`translate` vs `keep_romanized`),
+`keep_alive`, `ollama_host` (the Ollama server URL, default
+`http://localhost:11434`), `honorific_policy` (`translate` vs `keep_romanized`),
 `loanword_policy` (`keep_english` vs `localize`), `romanization` (`media` vs
 `revised`), chunk sizes, and per-pass temperatures. `bible.yaml` holds
 characters (each with a **frozen** `target` name rendering so names never drift
@@ -143,9 +144,36 @@ What we actually saw:
 (`--direct` is a lightweight one-pass path; the dedicated small-model real-time
 mode remains on the backlog per [AGENTS.md](AGENTS.md).)
 
+## Benchmark
+
+Measured on a self-hosted Ollama server translating Korean→Vietnamese with the
+default model `qwen3.6:latest` (a 35B-A3B MoE), `num_ctx=16384`, and TMDB
+context cached:
+
+| Hardware | |
+|---|---|
+| OS | Ubuntu 26.04 x86_64 |
+| CPU | Intel Core i3-12100F (4C/8T) |
+| GPU | NVIDIA GeForce RTX 3060 (12 GB) |
+| RAM | 32 GiB |
+
+| Mode | Throughput | Est. full episode (~900 cues) |
+|---|---|---|
+| Two-pass (pass 1 + pass 2) | ~12 cues/min | ~75 min |
+| One-pass `--direct` | ~28 cues/min | ~33 min |
+
+Wall-clock with the model already resident (`keep_alive`); the first call also
+pays a one-time load. The 35B MoE only partially fits the 3060's 12 GB VRAM and
+spills to CPU/RAM, so a larger card (or a smaller model) will be faster.
+Two-pass does roughly 2× the model calls of direct, which the timings reflect.
+
 ## Design notes
 
 The project follows [AGENTS.md](AGENTS.md): `dramasub.core` is a pure, UI-free
 library (no prints, typed errors, stdlib logging); `dramasub.cli` is the only
 place that prints. Correctness is enforced by runtime self-checks rather than a
 test suite. Dependencies are limited to `pysubs2`, `requests`, and `PyYAML`.
+
+## License
+
+Released under the [MIT License](LICENSE).
