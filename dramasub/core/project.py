@@ -141,6 +141,14 @@ class Project:
     def episode_summary(self, number: int) -> Path:
         return self.episode_dir(number) / "summary.txt"
 
+    def episode_source_existing(self, number: int) -> Path | None:
+        """The imported source file for an episode, whatever its extension."""
+        return _first_existing(self.episode_dir(number), "source")
+
+    def episode_output_existing(self, number: int) -> Path | None:
+        """The written output file for an episode, whatever its extension."""
+        return _first_existing(self.episode_dir(number), "output")
+
     def list_episodes(self) -> list[int]:
         """Episode numbers with a directory on disk, ascending."""
         if not self.episodes_dir.is_dir():
@@ -245,6 +253,14 @@ def validate_config(config: dict[str, Any]) -> None:
     tmdb_id = config.get("tmdb_id")
     if tmdb_id is not None and not isinstance(tmdb_id, int):
         raise ValidationError(f"project config: tmdb_id must be an int or null, got {tmdb_id!r}")
+
+
+def _first_existing(directory: Path, stem: str) -> Path | None:
+    for suffix in (".srt", ".ass", ".ssa", ".vtt"):
+        candidate = directory / f"{stem}{suffix}"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _episode_name(number: int) -> str:
