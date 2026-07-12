@@ -74,11 +74,19 @@ summary.txt     recap that feeds the next episode's context
 ## Configuration
 
 `project.yaml` holds per-project settings — languages, `model`, `num_ctx`,
-`keep_alive`, `honorific_policy` (`translate` vs `keep_romanized`), chunk sizes,
-and per-pass temperatures. `bible.yaml` holds characters, relationships, a
-**directed** address table (the target-language terms a speaker uses for
-themself and the listener), and a glossary. Both are human-editable — the tool
-only appends and updates, never silently deletes.
+`keep_alive`, `honorific_policy` (`translate` vs `keep_romanized`),
+`loanword_policy` (`keep_english` vs `localize`), `romanization` (`media` vs
+`revised`), chunk sizes, and per-pass temperatures. `bible.yaml` holds
+characters (each with a **frozen** `target` name rendering so names never drift
+between episodes), relationships, a **directed** address table (the
+target-language terms a speaker uses for themself and the listener), and a
+glossary. Both are human-editable — the tool only appends and updates, never
+silently deletes.
+
+Quality features drawn from professional subtitling practice: character names
+are frozen on first sight and reused verbatim; pass 1 flags narrators so
+commentary is rendered in the third person; and lines over the ~42-char reading
+limit are re-requested more concisely rather than truncated.
 
 ## Design notes
 
