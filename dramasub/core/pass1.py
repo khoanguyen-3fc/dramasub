@@ -1,0 +1,281 @@
+"""Pass 1 — episode context extraction.
+
+Reads the episode's dialogue and extracts structured context: who appears, who
+speaks to whom (and at what register), relationship/speech-level changes, and
+new terms. The result is written to the episode's ``context.yaml`` and its
+``proposed_updates`` are auto-applied to the bible (append/update only, logged
+to ``change_log`` so the user can review and revert).
+
+Long episodes are analyzed in segments so we never blow past ``num_ctx``; the
+per-segment results are merged into one episode context.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+from dramasub.core import prompts
+from dramasub.core._yaml import write_yaml
+from dramasub.core.bible import Bible
+from dramasub.core.llm import LLMClient
+from dramasub.core.subtitle import SubtitleDoc
+
+logger = logging.getLogger(__name__)
+
+# Cues per pass-1 LLM call. Small enough that the dialogue plus bible/series
+# context stays well inside a 16k context window.
+SEGMENT_CUES = 150
+
+_HONORIFIC_NOTES = {
+    "translate": (
+        "Render honorifics and address terms as natural {target} equivalents; "
+        "do not leave source-language honorifics romanized."
+    ),
+    "keep_romanized": (
+        "Keep source-language honorifics/address terms romanized (e.g. oppa, "
+        "sunbae) rather than translating them."
+    ),
+}
+
+
+@dataclass
+class Pass1Result:
+    """Structured episode context plus the bible changes it triggered."""
+
+    episode: int
+    context: dict[str, Any]
+    applied_updates: list[str] = field(default_factory=list)
+
+    @property
+    def characters_present(self) -> list[str]:
+        return self.context.get("characters_present", [])
+
+
+def extract_context(
+    project: Any,
+    bible: Bible,
+    doc: SubtitleDoc,
+    *,
+    episode: int,
+    llm: LLMClient,
+    series_context: str = "",
+    prev_summary: str = "",
+    segment_cues: int = SEGMENT_CUES,
+    write: bool = True,
+) -> Pass1Result:
+    """Run pass 1 over *doc*, update *bible*, and persist ``context.yaml``.
+
+    The caller owns saving the bible; this function mutates it in memory and
+    returns the change notes so the CLI can report and persist them.
+    """
+    indices = doc.translatable_indices()
+    if not indices:
+        logger.warning("episode %d has no translatable cues", episode)
+
+    known_characters = _format_characters(bible)
+    known_address = _format_address(bible)
+    known_glossary = _format_glossary(bible)
+    honorific_note = _honorific_note(project)
+    temperature = project.temperature("pass1")
+
+    merged = _empty_context(episode)
+    segments = _segments(indices, segment_cues)
+    for seg_no, seg in enumerate(segments, start=1):
+        dialogue = _format_dialogue(doc, seg)
+        label = f"{seg_no}/{len(segments)} (cues {seg[0]}-{seg[-1]})"
+        prompt = prompts.render(
+            "pass1",
+            source_language=project.source_language,
+            target_language=project.target_language,
+            segment_label=label,
+            series_context=series_context or "(none provided)",
+            prev_summary=prev_summary or "(this is the first analyzed segment)",
+            known_characters=known_characters,
+            known_address=known_address,
+            known_glossary=known_glossary,
+            honorific_policy_note=honorific_note,
+            episode=episode,
+            dialogue=dialogue,
+        )
+        logger.info("pass 1: analyzing segment %s", label)
+        raw = llm.generate_json(prompt, temperature=temperature)
+        normalized = _normalize_context(raw, episode)
+        _merge_into(merged, normalized)
+
+    applied = bible.apply_updates(episode, merged["proposed_updates"])
+    merged["applied_updates"] = applied
+
+    if write:
+        write_yaml(project.episode_context(episode), merged)
+        logger.info(
+            "pass 1 complete for episode %d: %d characters, %d bible updates",
+            episode,
+            len(merged["characters_present"]),
+            len(applied),
+        )
+    return Pass1Result(episode=episode, context=merged, applied_updates=applied)
+
+
+def _honorific_note(project: Any) -> str:
+    template = _HONORIFIC_NOTES.get(project.honorific_policy, _HONORIFIC_NOTES["translate"])
+    return template.format(target=project.target_language)
+
+
+def _segments(indices: list[int], segment_cues: int) -> list[list[int]]:
+    if not indices:
+        return []
+    return [indices[i:i + segment_cues] for i in range(0, len(indices), segment_cues)]
+
+
+def _format_dialogue(doc: SubtitleDoc, indices: list[int]) -> str:
+    lines = []
+    for i in indices:
+        text = doc.cue(i).plaintext.replace("\n", " ").strip()
+        lines.append(f"{i}: {text}")
+    return "\n".join(lines)
+
+
+def _format_characters(bible: Bible) -> str:
+    if not bible.characters:
+        return "(none known yet)"
+    out = []
+    for char in bible.characters:
+        aliases = ", ".join(char.get("aliases", []) or [])
+        role = char.get("role", "")
+        line = f"- {char.get('name', '?')}"
+        if role:
+            line += f" — {role}"
+        if aliases:
+            line += f" (aka {aliases})"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _format_address(bible: Bible) -> str:
+    if not bible.address:
+        return "(none known yet)"
+    out = []
+    for row in bible.address:
+        note = row.get("note", "")
+        line = (
+            f"- {row.get('from')} -> {row.get('to')}: self={row.get('self')}, "
+            f"other={row.get('other')}"
+        )
+        if row.get("since_episode") is not None:
+            line += f" (since ep {row.get('since_episode')})"
+        if note:
+            line += f" — {note}"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _format_glossary(bible: Bible) -> str:
+    if not bible.glossary:
+        return "(none known yet)"
+    out = []
+    for term in bible.glossary:
+        line = f"- {term.get('source')} = {term.get('target')}"
+        if term.get("note"):
+            line += f" ({term.get('note')})"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _empty_context(episode: int) -> dict[str, Any]:
+    return {
+        "episode": episode,
+        "characters_present": [],
+        "speaker_pairs": [],
+        "proposed_updates": {
+            "characters": [],
+            "relationships": [],
+            "address": [],
+            "glossary": [],
+        },
+        "new_terms": [],
+        "summary_hint": "",
+        "applied_updates": [],
+    }
+
+
+def _normalize_context(raw: Any, episode: int) -> dict[str, Any]:
+    """Coerce a model response into the expected shape, dropping junk."""
+    ctx = _empty_context(episode)
+    if not isinstance(raw, dict):
+        logger.warning("pass 1 returned non-object; ignoring segment")
+        return ctx
+
+    ctx["characters_present"] = _str_list(raw.get("characters_present"))
+    ctx["new_terms"] = _str_list(raw.get("new_terms"))
+    ctx["summary_hint"] = str(raw.get("summary_hint") or "").strip()
+
+    for pair in _dict_list(raw.get("speaker_pairs")):
+        if pair.get("from") and pair.get("to"):
+            ctx["speaker_pairs"].append(
+                {
+                    "from": str(pair["from"]),
+                    "to": str(pair["to"]),
+                    "register": str(pair.get("register", "unknown")),
+                }
+            )
+
+    updates = raw.get("proposed_updates")
+    if isinstance(updates, dict):
+        ctx["proposed_updates"]["characters"] = _dict_list(updates.get("characters"))
+        ctx["proposed_updates"]["relationships"] = _dict_list(updates.get("relationships"))
+        ctx["proposed_updates"]["address"] = _dict_list(updates.get("address"))
+        ctx["proposed_updates"]["glossary"] = _dict_list(updates.get("glossary"))
+    return ctx
+
+
+def _merge_into(target: dict[str, Any], seg: dict[str, Any]) -> None:
+    _extend_unique(target["characters_present"], seg["characters_present"])
+    _extend_unique(target["new_terms"], seg["new_terms"])
+    if seg["summary_hint"]:
+        target["summary_hint"] = (
+            f"{target['summary_hint']} {seg['summary_hint']}".strip()
+        )
+    _merge_pairs(target["speaker_pairs"], seg["speaker_pairs"], ("from", "to"))
+    tu, su = target["proposed_updates"], seg["proposed_updates"]
+    _merge_pairs(tu["characters"], su["characters"], ("name",))
+    _merge_pairs(tu["relationships"], su["relationships"], ("from", "to"))
+    _merge_pairs(tu["address"], su["address"], ("from", "to"))
+    _merge_pairs(tu["glossary"], su["glossary"], ("source",))
+
+
+def _merge_pairs(
+    target: list[dict[str, Any]], incoming: list[dict[str, Any]], keys: tuple[str, ...]
+) -> None:
+    """Append rows, overwriting an existing row with the same key tuple."""
+    index = {tuple(row.get(k) for k in keys): row for row in target}
+    for row in incoming:
+        key = tuple(row.get(k) for k in keys)
+        if None in key:
+            continue
+        if key in index:
+            index[key].update(row)
+        else:
+            target.append(row)
+            index[key] = row
+
+
+def _extend_unique(target: list[str], incoming: list[str]) -> None:
+    seen = set(target)
+    for item in incoming:
+        if item not in seen:
+            target.append(item)
+            seen.add(item)
+
+
+def _str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(v).strip() for v in value if str(v).strip()]
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, dict)]
