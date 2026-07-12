@@ -80,7 +80,18 @@ summary.txt     recap that feeds the next episode's context
 `keep_alive`, `ollama_host` (the Ollama server URL, default
 `http://localhost:11434`), `honorific_policy` (`translate` vs `keep_romanized`),
 `loanword_policy` (`keep_english` vs `localize`), `romanization` (`media` vs
-`revised`), chunk sizes, and per-pass temperatures. `bible.yaml` holds
+`revised`), chunk sizes, and per-pass temperatures.
+
+A `.env` file in the working directory is loaded automatically (existing
+environment wins), so secrets and machine-specific settings can live outside
+`project.yaml`. Recognized keys: `TMDB_API_KEY` and `OLLAMA_HOST` (overrides
+`ollama_host`; a bare `host:port` gets an `http://` prefix). Keep `.env`
+gitignored.
+
+```dotenv
+OLLAMA_HOST=http://10.0.0.20:11434
+TMDB_API_KEY=eyJhbGci...
+``` `bible.yaml` holds
 characters (each with a **frozen** `target` name rendering so names never drift
 between episodes), relationships, a **directed** address table (the
 target-language terms a speaker uses for themself and the listener), and a

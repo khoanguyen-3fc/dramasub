@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from dramasub.core.errors import DramasubError
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
     parser = _build_parser()
     args = parser.parse_args(argv)
     _configure_logging(getattr(args, "verbose", 0))
@@ -229,6 +231,31 @@ def _report(result: pass2.TranslateResult) -> None:
         print("  QC warnings: none")
     if result.summary:
         print("  episode summary written")
+
+
+def _load_dotenv(path: Path | None = None) -> None:
+    """Load ``KEY=VALUE`` pairs from a ``.env`` in the working directory.
+
+    Populates ``os.environ`` (existing environment always wins), so settings
+    like ``TMDB_API_KEY`` and ``OLLAMA_HOST`` can live in a local, gitignored
+    ``.env`` instead of being exported by hand. Absent file → no-op.
+    """
+    path = path or Path(".env")
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def _configure_logging(verbosity: int) -> None:

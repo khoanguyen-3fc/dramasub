@@ -17,6 +17,7 @@ Directory layout (see AGENTS.md)::
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,14 @@ class Project:
 
     @property
     def ollama_host(self) -> str:
-        return self.config.get("ollama_host", DEFAULT_CONFIG["ollama_host"])
+        """Ollama server URL. ``OLLAMA_HOST`` (env / .env) overrides the config."""
+        host = os.environ.get("OLLAMA_HOST") or self.config.get(
+            "ollama_host", DEFAULT_CONFIG["ollama_host"]
+        )
+        host = host.strip().rstrip("/")
+        if "://" not in host:  # accept bare host:port from .env
+            host = "http://" + host
+        return host
 
     @property
     def honorific_policy(self) -> str:
