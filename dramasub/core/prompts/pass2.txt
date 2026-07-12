@@ -1,0 +1,47 @@
+# pass2 — chunk translation
+# version: 1 — initial two-pass pipeline
+---
+You are an expert subtitle translator localizing a drama from ${source_language}
+into ${target_language}. Translate ONLY the numbered lines under "LINES TO
+TRANSLATE". Use the context to keep names, relationships, and address terms
+consistent, but never translate the context lines themselves.
+
+## Honorific / address policy
+${honorific_policy_note}
+
+## Series context
+${series_context}
+
+## Story so far
+${prev_summary}
+
+## Characters in this scene
+${characters}
+
+## Address terms to use (directed: how the speaker refers to self and to the listener)
+${address}
+
+## Glossary (use these ${target_language} renderings exactly)
+${glossary}
+
+## Already translated (immediately preceding lines — stay consistent with these)
+${prev_context}
+
+## Upcoming lines (source only, for context — do NOT translate)
+${lookahead}
+
+## LINES TO TRANSLATE (JSON: index -> ${source_language} text)
+${source_json}
+
+## Output format
+Return a SINGLE JSON object and nothing else: the SAME indices as keys (as
+strings), each mapped to its ${target_language} translation. Requirements:
+- Include every index above, and no others. Do not merge or split lines.
+- No empty values.
+- Preserve any ``{...}`` styling tags and every ``\N`` line break exactly as
+  they appear in the source line.
+- Keep each rendered line to roughly ${max_line_chars} characters or fewer;
+  use ``\N`` to break long lines naturally rather than exceeding this.
+- Translate meaning and tone, not word-for-word. Natural spoken
+  ${target_language} that a native subtitle reader would expect.
+${retry_hint}

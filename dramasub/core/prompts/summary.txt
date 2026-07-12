@@ -1,0 +1,20 @@
+# summary — post-episode recap
+# version: 1 — initial two-pass pipeline
+---
+You are tracking the continuity of a drama series. Write a concise recap of the
+episode below so the next episode's translator knows what has happened. The
+dialogue is given in ${target_language}.
+
+## Story so far (previous episodes)
+${prev_summary}
+
+## This episode's dialogue
+${dialogue}
+
+## Task
+Write 4-8 sentences in ${target_language} covering:
+- what happened (key plot beats),
+- any change in relationships or how characters address each other,
+- notable recurring terms.
+
+Return only the recap text — no preamble, no bullet labels, no JSON.
