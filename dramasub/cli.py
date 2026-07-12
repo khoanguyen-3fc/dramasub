@@ -142,27 +142,35 @@ def cmd_translate(args: argparse.Namespace) -> int:
     series_context = _series_context(project, args.season, args.episode)
     prev_summary = _prev_summary(project, args.episode)
 
-    print(f"pass 1: extracting context from {len(doc.translatable_indices())} cues "
-          f"(model {project.model})...")
-    p1 = pass1.extract_context(
-        project, bible, doc,
-        episode=args.episode, llm=client,
-        series_context=series_context, prev_summary=prev_summary,
-    )
-    project.save_bible(bible)
-    print(f"  characters present: {', '.join(p1.characters_present) or '(none identified)'}")
-    if p1.applied_updates:
-        print(f"  applied {len(p1.applied_updates)} bible update(s):")
-        for note in p1.applied_updates:
-            print(f"    - {note}")
+    episode_context = None
+    if args.direct:
+        # One-pass direct translate: no pass-1 analysis, no bible updates —
+        # only whatever online (TMDB) context exists. Lower quality/consistency
+        # but roughly half the model calls; useful as a fast baseline.
+        print("direct mode: one pass, no context extraction (TMDB context only)")
+    else:
+        print(f"pass 1: extracting context from {len(doc.translatable_indices())} cues "
+              f"(model {project.model})...")
+        p1 = pass1.extract_context(
+            project, bible, doc,
+            episode=args.episode, llm=client,
+            series_context=series_context, prev_summary=prev_summary,
+        )
+        project.save_bible(bible)
+        episode_context = p1.context
+        print(f"  characters present: {', '.join(p1.characters_present) or '(none identified)'}")
+        if p1.applied_updates:
+            print(f"  applied {len(p1.applied_updates)} bible update(s):")
+            for note in p1.applied_updates:
+                print(f"    - {note}")
 
-    print("pass 2: translating...")
+    print("pass 2: translating..." if not args.direct else "translating (one pass)...")
     result = pass2.translate_episode(
         project, bible, doc,
         episode=args.episode, llm=client,
-        episode_context=p1.context,
+        episode_context=episode_context,
         series_context=series_context, prev_summary=prev_summary,
-        generate_summary=not args.no_summary,
+        generate_summary=not args.no_summary and not args.direct,
     )
     _report(result)
     return 1 if result.failed_indices else 0
@@ -266,6 +274,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_tr.add_argument("--season", type=int, default=1)
     p_tr.add_argument("file", type=Path, help="the source subtitle file")
     p_tr.add_argument("--no-summary", action="store_true", help="skip episode summary")
+    p_tr.add_argument("--direct", action="store_true",
+                      help="one-pass direct translate: skip pass 1 and the bible, "
+                           "use only online (TMDB) context (faster, less consistent)")
     p_tr.set_defaults(func=cmd_translate)
 
     p_qc = sub.add_parser("qc", help="re-run QC on a translated episode")

@@ -30,7 +30,18 @@ _MAX_CAST = 12
 
 
 def resolve_api_key(project: Any = None) -> str | None:
-    """Return the TMDB key from the environment or project config."""
+    """Return the TMDB credential from the environment or project config.
+
+    Read from ``TMDB_API_KEY`` (env) or ``tmdb_api_key`` (project config). Either
+    of TMDB's two credential types works — the client auto-detects which:
+
+    * **API Key (v3 auth)** — a ~32-char hex string, sent as an ``api_key``
+      query parameter.
+    * **API Read Access Token (v4 auth)** — a long JWT beginning with ``eyJ``,
+      sent as an ``Authorization: Bearer`` header.
+
+    Both are found on your TMDB account's API settings page.
+    """
     key = os.environ.get("TMDB_API_KEY")
     if key:
         return key.strip()
