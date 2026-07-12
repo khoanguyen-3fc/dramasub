@@ -98,6 +98,11 @@ def normalize_linebreaks(text: str) -> str:
     )
 
 
+def rendered_lines(text: str) -> list[str]:
+    """The display lines of a cue body: tags stripped, split on ``\\N``."""
+    return _TAG_RE.sub("", text).replace(_LINEBREAK_TOKEN, "\n").split("\n")
+
+
 @dataclass
 class Cue:
     """A single subtitle event, addressed by its integer ``index``.

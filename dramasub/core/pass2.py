@@ -229,6 +229,7 @@ def _translate_chunk(
     }
 
     hint = ""
+    mapping: dict[int, str] | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         prompt = prompts.render("pass2", retry_hint=hint, **base_values)
         try:
@@ -240,11 +241,61 @@ def _translate_chunk(
 
         mapping, error = _validate_chunk(raw, source_map)
         if error is None:
-            return mapping
+            break
         hint = _retry_hint(error)
         logger.warning("chunk %d attempt %d invalid: %s", chunk.number, attempt, error)
+    else:
+        return None
 
-    return None
+    return _tighten(
+        mapping, source_map, base_values, llm, temperature, max_line_chars, chunk.number
+    )
+
+
+def _tighten(
+    mapping: dict[int, str],
+    source_map: dict[int, str],
+    base_values: dict[str, Any],
+    llm: LLMClient,
+    temperature: float,
+    max_line_chars: int,
+    chunk_number: int,
+) -> dict[int, str]:
+    """One best-effort pass to shorten cues whose lines exceed the limit.
+
+    Reading speed is a soft constraint: we ask the model once to shorten the
+    offending cues, keep the result only if it reduces the number of
+    over-length lines, and never hard-truncate.
+    """
+    over = _overlong(mapping, max_line_chars)
+    if not over:
+        return mapping
+    hint = _retry_hint(
+        f"these lines exceed {max_line_chars} characters and read too slowly: "
+        f"{sorted(over)}. Rephrase them more concisely (drop filler, tighten "
+        f"wording) and use \\N to keep every line at or under {max_line_chars} "
+        "characters. Keep the meaning and all other indices unchanged."
+    )
+    prompt = prompts.render("pass2", retry_hint=hint, **base_values)
+    try:
+        raw = llm.generate_json(prompt, temperature=temperature)
+    except LLMError:
+        return mapping
+    tightened, error = _validate_chunk(raw, source_map)
+    if error is not None:
+        return mapping
+    if len(_overlong(tightened, max_line_chars)) < len(over):
+        logger.info("chunk %d: tightened %d over-length cue(s)", chunk_number, len(over))
+        return tightened
+    return mapping
+
+
+def _overlong(mapping: dict[int, str], max_line_chars: int) -> list[int]:
+    return [
+        index
+        for index, value in mapping.items()
+        if any(len(line) > max_line_chars for line in subtitle.rendered_lines(value))
+    ]
 
 
 def _validate_chunk(
