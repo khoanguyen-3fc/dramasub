@@ -69,19 +69,18 @@ def internal_tags(text: str) -> list[str]:
 
 
 def preservation_error(source_body: str, translated: str) -> str | None:
-    """Check that a translation kept the source's inline tags and line breaks.
+    """Check that a translation kept the source's inline styling tags.
 
-    Returns a short human-readable hint describing the first mismatch, or
-    ``None`` if the translation is structurally faithful. Used by the retry
-    loop in :mod:`pass2` to tell the model what it got wrong.
+    Returns a short human-readable hint describing the mismatch, or ``None``
+    if the translation preserved every ``{...}`` override tag. Used by the
+    retry loop in :mod:`pass2` to tell the model what it got wrong.
+
+    Note: ``\\N`` line breaks are deliberately **not** required to match. A
+    translation may re-wrap lines to respect the target language's per-line
+    length (Korean and Vietnamese wrap very differently), which the pass-2
+    prompt actively asks for. Styling tags carry meaning and must survive
+    verbatim; line breaks are cosmetic and are normalized on apply.
     """
-    src_breaks = source_body.count(_LINEBREAK_TOKEN)
-    out_breaks = translated.count(_LINEBREAK_TOKEN)
-    if src_breaks != out_breaks:
-        return (
-            f"expected {src_breaks} '\\N' line break(s) but found {out_breaks}; "
-            "preserve every '\\N' exactly"
-        )
     src_tags = sorted(internal_tags(source_body))
     out_tags = sorted(internal_tags(translated))
     if src_tags != out_tags:
@@ -90,6 +89,13 @@ def preservation_error(source_body: str, translated: str) -> str | None:
             f"but found {out_tags or 'none'}; keep every '{{...}}' tag verbatim"
         )
     return None
+
+
+def normalize_linebreaks(text: str) -> str:
+    """Normalize any real newlines a model returned into subtitle ``\\N``."""
+    return (
+        text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", _LINEBREAK_TOKEN)
+    )
 
 
 @dataclass

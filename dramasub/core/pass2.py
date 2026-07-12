@@ -267,6 +267,7 @@ def _validate_chunk(
         value = got[str(index)]
         if not isinstance(value, str) or not value.strip():
             return None, f"index {index} has an empty or non-string value"
+        value = subtitle.normalize_linebreaks(value)
         preserve = preservation_error(body, value)
         if preserve is not None:
             return None, f"index {index}: {preserve}"

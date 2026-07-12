@@ -1,5 +1,7 @@
 # pass2 — chunk translation
-# version: 1 — initial two-pass pipeline
+# version: 2 — line breaks may be re-wrapped for length; only {...} tags are
+#             preserved verbatim (v1 required exact \N counts, which conflicted
+#             with the per-line length limit and rejected valid translations)
 ---
 You are an expert subtitle translator localizing a drama from ${source_language}
 into ${target_language}. Translate ONLY the numbered lines under "LINES TO
@@ -38,10 +40,10 @@ Return a SINGLE JSON object and nothing else: the SAME indices as keys (as
 strings), each mapped to its ${target_language} translation. Requirements:
 - Include every index above, and no others. Do not merge or split lines.
 - No empty values.
-- Preserve any ``{...}`` styling tags and every ``\N`` line break exactly as
-  they appear in the source line.
-- Keep each rendered line to roughly ${max_line_chars} characters or fewer;
-  use ``\N`` to break long lines naturally rather than exceeding this.
+- Preserve any ``{...}`` styling tags exactly as they appear in the source line.
+- Keep each rendered line to roughly ${max_line_chars} characters or fewer.
+  You MAY re-wrap lines to fit the target language: use ``\N`` to insert a line
+  break, and you need not keep the same number of lines as the source.
 - Translate meaning and tone, not word-for-word. Natural spoken
   ${target_language} that a native subtitle reader would expect.
 ${retry_hint}
