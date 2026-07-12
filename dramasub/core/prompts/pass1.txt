@@ -1,5 +1,5 @@
 # pass1 — episode context extraction
-# version: 2 — characters carry a frozen target-language name rendering
+# version: 3 — detect narrators/commentators (lines with no addressee)
 ---
 You are a subtitle-localization analyst. You read numbered dialogue lines from a
 drama episode in ${source_language} and extract structured context that a
@@ -58,6 +58,7 @@ Return a SINGLE JSON object (no prose, no markdown) with exactly these keys:
     ]
   },
   "new_terms": ["notable ${source_language} term or name first seen here"],
+  "narrators": ["name of any narrator/commentator/voiceover speaking to the audience, not to a character"],
   "summary_hint": "one or two sentences summarizing what happens in these lines"
 }
 
@@ -68,5 +69,7 @@ Rules:
 - Only include an address row when you can infer BOTH the self-term and the
   other-term in ${target_language}. Flag confessions, fights, or the first
   switch to informal speech as address updates with a note.
+- If lines are sports commentary, voiceover, or monologue addressed to the
+  audience (no in-scene listener), list the speaker under "narrators".
 - Only include facts these lines actually support. Use empty lists when unsure.
 - Output must be valid JSON and nothing else.

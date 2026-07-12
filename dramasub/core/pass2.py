@@ -102,8 +102,10 @@ def translate_episode(
     )
 
     episode_cast = set((episode_context or {}).get("characters_present", []))
+    narrators = set((episode_context or {}).get("narrators", []))
     all_names = bible.character_names()
     honorific_note = _honorific_note(project)
+    narration_note = _narration_note(narrators)
     temperature = project.temperature("pass2")
     max_line_chars = project.max_line_chars
 
@@ -120,6 +122,7 @@ def translate_episode(
             episode_cast=episode_cast,
             all_names=all_names,
             honorific_note=honorific_note,
+            narration_note=narration_note,
             series_context=series_context,
             prev_summary=prev_summary,
             temperature=temperature,
@@ -185,6 +188,7 @@ def _translate_chunk(
     episode_cast: set[str],
     all_names: set[str],
     honorific_note: str,
+    narration_note: str,
     series_context: str,
     prev_summary: str,
     temperature: float,
@@ -208,6 +212,7 @@ def _translate_chunk(
         "source_language": project.source_language,
         "target_language": project.target_language,
         "honorific_policy_note": honorific_note,
+        "narration_note": narration_note,
         "style_note": project.style_guidance(),
         "series_context": series_context or "(none)",
         "prev_summary": prev_summary or "(start of episode)",
@@ -318,6 +323,17 @@ def _generate_summary(
     except LLMError as exc:
         logger.warning("could not generate episode summary: %s", exc)
         return ""
+
+
+def _narration_note(narrators: set[str]) -> str:
+    note = (
+        "Some lines may be narration, voiceover, or commentary spoken to the "
+        "audience rather than to another character. Render those in the third "
+        "person and do not invent a second-person pronoun for the speaker."
+    )
+    if narrators:
+        note += " Known narrators/commentators this episode: " + ", ".join(sorted(narrators)) + "."
+    return note
 
 
 def _honorific_note(project: Any) -> str:

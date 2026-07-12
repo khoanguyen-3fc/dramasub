@@ -1,4 +1,5 @@
 # pass2 — chunk translation
+# version: 3 — add frozen name renderings, style policy, and narration guidance
 # version: 2 — line breaks may be re-wrapped for length; only {...} tags are
 #             preserved verbatim (v1 required exact \N counts, which conflicted
 #             with the per-line length limit and rejected valid translations)
@@ -25,6 +26,9 @@ ${characters}
 
 ## Character names — use these exact ${target_language} spellings, every time
 ${names}
+
+## Narration
+${narration_note}
 
 ## Address terms to use (directed: how the speaker refers to self and to the listener)
 ${address}

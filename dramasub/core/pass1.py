@@ -196,6 +196,7 @@ def _empty_context(episode: int) -> dict[str, Any]:
             "glossary": [],
         },
         "new_terms": [],
+        "narrators": [],
         "summary_hint": "",
         "applied_updates": [],
     }
@@ -210,6 +211,7 @@ def _normalize_context(raw: Any, episode: int) -> dict[str, Any]:
 
     ctx["characters_present"] = _str_list(raw.get("characters_present"))
     ctx["new_terms"] = _str_list(raw.get("new_terms"))
+    ctx["narrators"] = _str_list(raw.get("narrators"))
     ctx["summary_hint"] = str(raw.get("summary_hint") or "").strip()
 
     for pair in _dict_list(raw.get("speaker_pairs")):
@@ -234,6 +236,7 @@ def _normalize_context(raw: Any, episode: int) -> dict[str, Any]:
 def _merge_into(target: dict[str, Any], seg: dict[str, Any]) -> None:
     _extend_unique(target["characters_present"], seg["characters_present"])
     _extend_unique(target["new_terms"], seg["new_terms"])
+    _extend_unique(target["narrators"], seg["narrators"])
     if seg["summary_hint"]:
         target["summary_hint"] = (
             f"{target['summary_hint']} {seg['summary_hint']}".strip()
