@@ -29,6 +29,9 @@ ${known_glossary}
 ## Honorific policy
 ${honorific_policy_note}
 
+## Style
+${style_note}
+
 ## Dialogue lines (index: text)
 ${dialogue}
 

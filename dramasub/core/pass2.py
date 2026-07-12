@@ -208,6 +208,7 @@ def _translate_chunk(
         "source_language": project.source_language,
         "target_language": project.target_language,
         "honorific_policy_note": honorific_note,
+        "style_note": project.style_guidance(),
         "series_context": series_context or "(none)",
         "prev_summary": prev_summary or "(start of episode)",
         "characters": _format_characters(present_chars),

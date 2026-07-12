@@ -28,6 +28,8 @@ from dramasub.core.errors import ProjectError, ValidationError
 logger = logging.getLogger(__name__)
 
 HONORIFIC_POLICIES = ("translate", "keep_romanized")
+LOANWORD_POLICIES = ("keep_english", "localize")
+ROMANIZATION_STYLES = ("media", "revised")
 
 # Config defaults. Model name lives here and nowhere else — never hardcode it
 # in pipeline logic (AGENTS.md "LLM usage").
@@ -41,6 +43,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "keep_alive": "30m",
     "ollama_host": "http://localhost:11434",
     "honorific_policy": "translate",
+    "loanword_policy": "keep_english",
+    "romanization": "media",
     "temperature": {"pass1": 0.7, "pass2": 0.3, "summary": 0.7},
     "chunk": {"size": 12, "prev_window": 8, "lookahead": 4},
     "max_line_chars": 42,
@@ -95,6 +99,40 @@ class Project:
     @property
     def honorific_policy(self) -> str:
         return self.config.get("honorific_policy", DEFAULT_CONFIG["honorific_policy"])
+
+    @property
+    def loanword_policy(self) -> str:
+        return self.config.get("loanword_policy", DEFAULT_CONFIG["loanword_policy"])
+
+    @property
+    def romanization(self) -> str:
+        return self.config.get("romanization", DEFAULT_CONFIG["romanization"])
+
+    def style_guidance(self) -> str:
+        """Prompt-ready guidance for loanwords and name romanization."""
+        parts = []
+        if self.loanword_policy == "keep_english":
+            parts.append(
+                f"Keep loanwords that {self.source_language} speakers themselves "
+                "use in English (e.g. TF, KPI, highball, prototype, retro) rather "
+                f"than forcing a {self.target_language} word."
+            )
+        else:
+            parts.append(
+                f"Prefer natural {self.target_language} words over English "
+                "loanwords wherever it does not sound stiff."
+            )
+        if self.romanization == "media":
+            parts.append(
+                "Romanize personal names using common media/passport spellings "
+                "(e.g. Hong Gil Dong), not academic romanization."
+            )
+        else:
+            parts.append(
+                "Romanize personal names using the standard academic "
+                f"romanization for {self.source_language}."
+            )
+        return " ".join(parts)
 
     @property
     def max_line_chars(self) -> int:
@@ -247,6 +285,15 @@ def validate_config(config: dict[str, Any]) -> None:
             f"project config: honorific_policy must be one of {HONORIFIC_POLICIES}, "
             f"got {policy!r}"
         )
+    for key, allowed in (
+        ("loanword_policy", LOANWORD_POLICIES),
+        ("romanization", ROMANIZATION_STYLES),
+    ):
+        value = config.get(key, DEFAULT_CONFIG[key])
+        if value not in allowed:
+            raise ValidationError(
+                f"project config: {key} must be one of {allowed}, got {value!r}"
+            )
     num_ctx = config.get("num_ctx", DEFAULT_CONFIG["num_ctx"])
     if not isinstance(num_ctx, int) or num_ctx <= 0:
         raise ValidationError(f"project config: num_ctx must be a positive int, got {num_ctx!r}")

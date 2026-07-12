@@ -11,6 +11,9 @@ consistent, but never translate the context lines themselves.
 ## Honorific / address policy
 ${honorific_policy_note}
 
+## Style
+${style_note}
+
 ## Series context
 ${series_context}
 

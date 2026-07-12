@@ -96,6 +96,7 @@ def extract_context(
             known_address=known_address,
             known_glossary=known_glossary,
             honorific_policy_note=honorific_note,
+            style_note=project.style_guidance(),
             episode=episode,
             dialogue=dialogue,
         )
