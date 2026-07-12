@@ -169,6 +169,30 @@ Wall-clock with the model already resident (`keep_alive`); the first call also
 pays a one-time load. Full-episode figures (~900 cues) are extrapolated from a
 48-cue timed sample. Two-pass does roughly 2× the model calls of direct.
 
+## Quality: fast model vs best model
+
+A blind, order-swapped LLM-judge comparison on a real Korean→Vietnamese episode
+(48 cues, full two-pass, scored against a **human** reference translation):
+
+| Model | Speed | Adequacy\* | Fluency\* |
+|---|---|---|---|
+| `qwen3.5:latest` | ~65 cues/min | 6.0 | 6.5 |
+| `qwen3.6:latest` | ~13 cues/min | 7.0 | 8.0 |
+
+\*1–10, judged blind by a separate model; directional only.
+
+`qwen3.6:latest` is modestly more accurate and natural; `qwen3.5:latest` is ~5×
+faster. On ordinary dialogue both are usable — but **both trail the human on
+domain-specific slang and brand abbreviations** (an in-scene shorthand the human
+expands to its full brand name; a place nickname the models misread as a
+different city). Those are exactly the cases the hand-editable **glossary and
+bible** exist to fix: freeze the correct rendering once and every later cue and
+episode inherits it — the human curates, the model stops guessing.
+
+Caveats worth stating: small sample; a reference translation is a guide, not
+absolute truth; and the LLM judge showed some position bias (so a raw win count
+is omitted in favor of the averaged scores above).
+
 ## Design notes
 
 The project follows [AGENTS.md](AGENTS.md): `dramasub.core` is a pure, UI-free
