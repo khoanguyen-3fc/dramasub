@@ -146,9 +146,8 @@ mode remains on the backlog per [AGENTS.md](AGENTS.md).)
 
 ## Benchmark
 
-Measured on a self-hosted Ollama server translating Korean→Vietnamese with the
-default model `qwen3.6:latest` (a 35B-A3B MoE), `num_ctx=16384`, and TMDB
-context cached:
+Measured on a self-hosted Ollama server translating Korean→Vietnamese with
+`num_ctx=16384` and TMDB context cached:
 
 | Hardware | |
 |---|---|
@@ -157,15 +156,18 @@ context cached:
 | GPU | NVIDIA GeForce RTX 3060 (12 GB) |
 | RAM | 32 GiB |
 
-| Mode | Throughput | Est. full episode (~900 cues) |
-|---|---|---|
-| Two-pass (pass 1 + pass 2) | ~12 cues/min | ~75 min |
-| One-pass `--direct` | ~28 cues/min | ~33 min |
+| Model | Fits 12 GB VRAM | Two-pass | One-pass `--direct` |
+|---|---|---|---|
+| `qwen3.6:latest` (35B-A3B MoE, default) | no — spills to CPU/RAM | ~12 cues/min (~75 min/ep) | ~28 cues/min (~33 min/ep) |
+| `qwen3.5:latest` (fast pick) | yes — fully on GPU | ~58 cues/min (~16 min/ep) | ~107 cues/min (~8 min/ep) |
+
+`qwen3.6:latest` gives the best quality; `qwen3.5:latest` runs ~5× faster
+because it fits entirely in VRAM — a good pick for fast drafts and iteration.
+Set it with `init --model qwen3.5:latest` or the `model` key in `project.yaml`.
 
 Wall-clock with the model already resident (`keep_alive`); the first call also
-pays a one-time load. The 35B MoE only partially fits the 3060's 12 GB VRAM and
-spills to CPU/RAM, so a larger card (or a smaller model) will be faster.
-Two-pass does roughly 2× the model calls of direct, which the timings reflect.
+pays a one-time load. Full-episode figures (~900 cues) are extrapolated from a
+48-cue timed sample. Two-pass does roughly 2× the model calls of direct.
 
 ## Design notes
 
