@@ -24,6 +24,19 @@ The LLM never touches timestamps or file structure: subtitles are parsed and
 reassembled programmatically, and every write is self-checked (cue count and
 every timestamp must match the source, or the write aborts).
 
+```mermaid
+flowchart LR
+    SRT["Korean<br/>subtitle"] --> P1["Pass 1:<br/>extract context"]
+    P1 --> BIBLE[("Series bible")]
+    SRT --> P2["Pass 2:<br/>translate in context"]
+    BIBLE --> P2
+    CTX[("Online context<br/>TMDB / Wikipedia")] -.-> P1
+    CTX -.-> P2
+    P2 --> OUT["Vietnamese subtitle<br/>same timing, verified"]
+    P2 --> SUM["Episode recap"]
+    SUM -.->|feeds next episode| P1
+```
+
 ## Advantages
 
 - **Translates direct from the source language, not a pivot.** Most fan subs are
