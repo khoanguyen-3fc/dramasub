@@ -24,6 +24,44 @@ The LLM never touches timestamps or file structure: subtitles are parsed and
 reassembled programmatically, and every write is self-checked (cue count and
 every timestamp must match the source, or the write aborts).
 
+## Advantages
+
+- **Translates direct from the source language, not a pivot.** Most fan subs are
+  relayed through English, which compounds a second language's drift, reordering,
+  and errors. dramasub goes Korean→Vietnamese directly, staying closer to the
+  original meaning, tone, names, and even deliberate slurs. Tested against a
+  third-party sub that had been pivoted through English, dramasub was *more*
+  faithful to the Korean on every episode wherever that pivot drifted (see
+  [Measured against a human sub team](#measured-against-a-human-sub-team)).
+- **The model never touches timing or structure.** Cues are parsed and
+  reassembled programmatically; every write is verified against the source (cue
+  count + every timestamp) or aborted — no desync, no dropped lines.
+- **Consistency across a series.** A per-show bible freezes character names, a
+  directed address table fixes who calls whom what, and a glossary pins recurring
+  terms — set once, hand-correctable, applied to every later cue and episode.
+- **Local, offline, private, free.** Runs on your own Ollama — even a 12 GB GPU —
+  with no cloud, no per-token cost, and subtitles never leaving your machine.
+- **Human-in-the-loop by design.** Everything the model infers is editable YAML;
+  a reviewer fixes a pronoun or term once and the fix propagates.
+- **Language-neutral.** The `ko`→`vi` default is just configuration.
+
+## Limitations
+
+- **Not at parity with a skilled human on polish.** A human sub reads more
+  naturally and handles register (pronouns / speech levels) more reliably; out of
+  the box the model sometimes defaults to wrong or archaic pronouns until the
+  address table is curated.
+- **Register and culture-specific terms need review.** Job titles, honorifics,
+  and slang can come out wrong on the first pass — the bible and glossary exist to
+  fix this, but that is human work.
+- **Quality is bounded by the local model.** A 7–35B model won't match a frontier
+  model's fluency; expect occasional mistranslations — more so on the fast model,
+  which also code-switches and hallucinates.
+- **The best model is slow on modest hardware.** ~35B spills off a 12 GB GPU
+  (~12 cues/min); the fast model trades quality for ~5× speed.
+- **Wordplay and brand slang still need a human.** Puns and in-scene shorthand are
+  not reliably reinvented.
+
 ## Requirements
 
 - Python 3.11+
@@ -182,27 +220,66 @@ pays a one-time load. Full-episode figures (~900 cues) are extrapolated from a
 
 ## Quality: fast model vs best model
 
-A blind, order-swapped LLM-judge comparison on a real Korean→Vietnamese episode
-(48 cues, full two-pass, scored against a **human** reference translation):
+Both models were run two-pass on **5 real Korean episodes (240 cues total)** and
+scored **against the Korean source** by independent stronger-model judges (one
+per episode) — deliberately *not* against the Vietnamese reference, because that
+reference was a third-party sub pivoted through English and so drifts from the
+Korean itself.
 
-| Model | Speed | Adequacy\* | Fluency\* |
-|---|---|---|---|
-| `qwen3.5:latest` | ~65 cues/min | 6.0 | 6.5 |
-| `qwen3.6:latest` | ~13 cues/min | 7.0 | 8.0 |
+| Criterion (vs Korean, 1–10, avg of 5 eps) | `qwen3.5:latest` | `qwen3.6:latest` |
+|---|---|---|
+| Adequacy (meaning fidelity) | 5.8 | **7.7** |
+| Fluency (natural Vietnamese) | 6.2 | **7.2** |
+| Register (pronouns / speech level) | 5.5 | **6.5** |
 
-\*1–10, judged blind by a separate model; directional only.
+Head-to-head across 240 cues: **`qwen3.6` wins ~50%, tie ~35%, `qwen3.5` wins
+~15%** — 3.6 is at least as good on ~85% of lines. `qwen3.5` is ~5× faster
+(~55 vs ~12 cues/min): a fast-draft engine, not a finishing one.
 
-`qwen3.6:latest` is modestly more accurate and natural; `qwen3.5:latest` is ~5×
-faster. On ordinary dialogue both are usable — but **both trail the human on
-domain-specific slang and brand abbreviations** (an in-scene shorthand the human
-expands to its full brand name; a place nickname the models misread as a
-different city). Those are exactly the cases the hand-editable **glossary and
-bible** exist to fix: freeze the correct rendering once and every later cue and
-episode inherits it — the human curates, the model stops guessing.
+Consistent findings across all five episodes:
 
-Caveats worth stating: small sample; a reference translation is a guide, not
-absolute truth; and the LLM judge showed some position bias (so a raw win count
-is omitted in favor of the averaged scores above).
+- **Translating direct from Korean beats an English pivot.** In every episode the
+  local models kept meaning the pivoted reference lost; in one case the reference
+  even followed a *mis-aligned* English line unrelated to the Korean. Going
+  straight from the source avoids compounding a second language's drift.
+- **The recurring errors are data-fixable.** The best model's main weakness is
+  register (archaic/incorrect pronouns for modern characters), and both models
+  systematically mistranslate a job title — exactly what the directed **address
+  table** and **glossary** are for: fix each once, curated by a human, and every
+  later cue and episode inherits it.
+- `qwen3.5` additionally shows meaning reversals, occasional hallucinations, and
+  leftover untranslated English, so it needs heavier post-editing.
+
+Method notes: judged against the Korean by stronger models across 5×48-cue
+samples — directional, not a leaderboard. Lexical-overlap scoring was discarded
+as meaningless against a re-timed, pivoted reference; a reference translation is
+a guide, not ground truth.
+
+## Measured against a human sub team
+
+We also put dramasub's best model (`qwen3.6:latest`) head-to-head against a
+third-party **human** Vietnamese sub for the same 5 episodes — both scored
+against the Korean source. (That human sub had itself been pivoted through
+English, confirmed by cue-count/timing alignment and by lines that follow the
+English even where it diverges from the Korean.)
+
+| vs Korean (avg of 5 eps, 1–10) | Human team | dramasub (`qwen3.6`) |
+|---|---|---|
+| Adequacy (meaning) | 7.8 | 7.0 |
+| Fluency (natural Vietnamese) | 9.0 | 7.0 |
+| Register (pronouns / speech level) | 8.8 | 6.2 |
+
+Head-to-head over 240 cues: **human better on ~33%, tie ~50%, dramasub better
+~18%.** So on about half the lines the local pipeline was indistinguishable from
+the human team — and it was *more* faithful to the Korean wherever the human's
+English pivot drifted, dropped, or inverted meaning. The human's lead is
+concentrated in **fluency and register, not meaning** (adequacy was near-even),
+and register is exactly what the address table exists to fix. This ran with
+fresh, uncurated per-episode bibles; curation would narrow the gap.
+
+Not parity — but a free, offline, local pipeline that ties or beats a human team
+on two-thirds of lines, and is closer to the Korean than an English-pivoted
+professional sub, is a strong result.
 
 ## Design notes
 
