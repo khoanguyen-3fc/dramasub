@@ -6,11 +6,13 @@ lookahead) and a bible excerpt filtered to just the characters, address pairs,
 and glossary terms relevant to the chunk — never the whole bible.
 
 Every chunk's result is validated: the returned index set must match exactly,
-no value may be empty, and inline ``{...}`` tags / ``\\N`` line breaks must be
-preserved. On failure the chunk is retried up to twice with an error hint; if
-it still fails those cues are left untranslated and reported — the run never
-crashes mid-episode. Output is written with the mandatory timing/count
-self-check and then QC'd.
+no value may be empty, inline ``{...}`` tags must be preserved, and no cue may
+contain a script the target language doesn't use (guards against Chinese
+idioms leaking from Chinese-trained models). On failure the chunk is retried
+up to twice with an error hint; after that, individually valid cues are
+salvaged and only the offending cues are left untranslated and reported — the
+run never crashes mid-episode. Output is written with the mandatory
+timing/count self-check and then QC'd.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from dramasub.core import chunker, prompts, qc, subtitle
 from dramasub.core.bible import Bible
 from dramasub.core.chunker import Chunk
 from dramasub.core.errors import LLMError
+from dramasub.core.lang import language_name
 from dramasub.core.llm import LLMClient
 from dramasub.core.qc import QCWarning
 from dramasub.core.subtitle import SubtitleDoc, preservation_error
@@ -108,6 +111,9 @@ def translate_episode(
     narration_note = _narration_note(narrators)
     temperature = project.temperature("pass2")
     max_line_chars = project.max_line_chars
+    guide = project.load_guide()
+    # Base dictionary underneath the show bible: the bible wins per source term.
+    terms = _merge_terms(project.load_dictionary(), bible.glossary)
 
     translations: dict[int, str] = {}
     failures: list[ChunkFailure] = []
@@ -117,6 +123,8 @@ def translate_episode(
             chunk,
             project=project,
             bible=bible,
+            terms=terms,
+            guide=guide,
             llm=llm,
             translations=translations,
             episode_cast=episode_cast,
@@ -128,13 +136,13 @@ def translate_episode(
             temperature=temperature,
             max_line_chars=max_line_chars,
         )
-        if mapping is None:
-            failures.append(
-                ChunkFailure(chunk.number, chunk.indices, "validation failed after retries")
+        chunk_ok, chunk_failed, reason = mapping
+        translations.update(chunk_ok)
+        if chunk_failed:
+            failures.append(ChunkFailure(chunk.number, chunk_failed, reason))
+            logger.error(
+                "chunk %d: cues %s left untranslated (%s)", chunk.number, chunk_failed, reason
             )
-            logger.error("chunk %d failed; cues %s left untranslated", chunk.number, chunk.indices)
-        else:
-            translations.update(mapping)
         logger.info(
             "chunk %d/%d done (%d translated so far)",
             chunk.number,
@@ -142,6 +150,12 @@ def translate_episode(
             len(translations),
         )
 
+    # Defensive final sweep: rewrap is idempotent, so normalizing once more at
+    # apply time guarantees no code path can ship model line breaks, whatever
+    # produced the value.
+    translations = {
+        i: subtitle.rewrap(body, max_line_chars) for i, body in translations.items()
+    }
     doc.apply(translations)
 
     failed_indices = sorted(i for f in failures for i in f.indices)
@@ -159,8 +173,41 @@ def translate_episode(
         subtitle.save_verified(doc, out_path, source_ref)
         result.output_path = out_path
         result.qc_warnings = qc.run_qc(
-            bible, source_ref, doc, max_line_chars=max_line_chars
+            bible,
+            source_ref,
+            doc,
+            max_line_chars=max_line_chars,
+            target_language=project.target_language,
         )
+        # QC-driven repair: re-request cues whose bible-glossary rendering is
+        # missing (also recovers cues the model truncated mid-sentence, since
+        # the dropped term forces a full regeneration). Accepted only when the
+        # required rendering actually appears; otherwise the original stands.
+        repaired = _repair_glossary_misses(
+            project=project,
+            bible=bible,
+            doc=doc,
+            source_ref=source_ref,
+            qc_warnings=result.qc_warnings,
+            llm=llm,
+            temperature=temperature,
+            max_line_chars=max_line_chars,
+        )
+        if repaired:
+            translations.update(repaired)
+            doc.apply(repaired)
+            subtitle.save_verified(doc, out_path, source_ref)
+            result.qc_warnings = qc.run_qc(
+                bible,
+                source_ref,
+                doc,
+                max_line_chars=max_line_chars,
+                target_language=project.target_language,
+            )
+            logger.info(
+                "QC repair fixed %d cue(s); %d warning(s) remain",
+                len(repaired), len(result.qc_warnings),
+            )
 
     if generate_summary:
         result.summary = _generate_summary(project, doc, llm, prev_summary)
@@ -183,6 +230,8 @@ def _translate_chunk(
     *,
     project: Any,
     bible: Bible,
+    terms: list[dict[str, Any]],
+    guide: str,
     llm: LLMClient,
     translations: dict[int, str],
     episode_cast: set[str],
@@ -193,8 +242,14 @@ def _translate_chunk(
     prev_summary: str,
     temperature: float,
     max_line_chars: int,
-) -> dict[int, str] | None:
-    """Translate one chunk with validation + retries. Returns the mapping or None."""
+) -> tuple[dict[int, str], list[int], str]:
+    """Translate one chunk with per-cue validation and retries.
+
+    Returns ``(translations, failed_indices, reason)``. After the retries are
+    exhausted, individually valid cues from the best attempt are salvaged and
+    only the offending cues are failed — one stubborn line no longer costs the
+    whole chunk.
+    """
     source_map = chunk.source_map()
     window_texts = [c.plaintext for c in (chunk.cues + chunk.prev + chunk.lookahead)]
     mentioned = {name for name in all_names if any(name in t for t in window_texts)}
@@ -205,15 +260,16 @@ def _translate_chunk(
         episode_cast & all_names
     )
     address_rows = bible.address_rows_for(canonical)
-    glossary_rows = _relevant_glossary(bible, source_map.values())
+    glossary_rows = _relevant_terms(terms, source_map.values())
     name_rows = bible.name_renderings(chunk_names)
 
     base_values = {
-        "source_language": project.source_language,
-        "target_language": project.target_language,
+        "source_language": language_name(project.source_language),
+        "target_language": language_name(project.target_language),
         "honorific_policy_note": honorific_note,
         "narration_note": narration_note,
         "style_note": project.style_guidance(),
+        "guide": guide or "(none)",
         "series_context": series_context or "(none)",
         "prev_summary": prev_summary or "(start of episode)",
         "characters": _format_characters(present_chars),
@@ -229,82 +285,273 @@ def _translate_chunk(
     }
 
     hint = ""
-    mapping: dict[int, str] | None = None
+    # Valid cues are accumulated ACROSS attempts (first valid rendering wins —
+    # earlier attempts run cooler and read better). Hot retries can fix the
+    # flagged cue while newly leaking on another ("whack-a-mole"); the union
+    # of attempts is often complete even when no single attempt is.
+    salvaged: dict[int, str] = {}
+    last_error: dict[int, str] = {}
+    retry_temps = project.retry_temperatures
     for attempt in range(1, MAX_ATTEMPTS + 1):
         prompt = prompts.render("pass2", retry_hint=hint, **base_values)
+        # Retries explore: at low temperature the model tends to regenerate the
+        # same wrong tokens (e.g. a stubborn foreign idiom) despite the hint,
+        # so retries run at the configured retry_temperatures (first attempt
+        # uses the pass-2 temperature; an empty list keeps retries cool).
+        if attempt == 1 or not retry_temps:
+            attempt_temperature = temperature
+        else:
+            attempt_temperature = retry_temps[min(attempt - 2, len(retry_temps) - 1)]
         try:
-            raw = llm.generate_json(prompt, temperature=temperature)
+            raw = llm.generate_json(prompt, temperature=attempt_temperature)
         except LLMError as exc:
             hint = _retry_hint(f"your previous reply could not be parsed as JSON ({exc})")
             logger.warning("chunk %d attempt %d: %s", chunk.number, attempt, exc)
             continue
 
-        mapping, error = _validate_chunk(raw, source_map)
-        if error is None:
-            break
-        hint = _retry_hint(error)
-        logger.warning("chunk %d attempt %d invalid: %s", chunk.number, attempt, error)
-    else:
-        return None
+        mapping, errors = _validate_chunk(raw, source_map, project.target_language)
+        if None not in errors:  # structurally valid: bank this attempt's cues
+            for index, body in mapping.items():
+                salvaged.setdefault(index, body)
+            for index, problem in errors.items():
+                last_error[index] = problem
+        if errors:
+            logger.warning(
+                "chunk %d attempt %d invalid: %s",
+                chunk.number, attempt, _describe(errors),
+            )
+        missing = [i for i in source_map if i not in salvaged]
+        if not missing:
+            if attempt > 1 or errors:
+                logger.info(
+                    "chunk %d: all cues covered after %d attempt(s) via "
+                    "cross-attempt salvage", chunk.number, attempt,
+                )
+            break  # every cue covered by some attempt — done, even mid-retry
+        hint = _retry_hint(_describe(errors) if errors else "reply unusable")
 
-    return _tighten(
-        mapping, source_map, base_values, llm, temperature, max_line_chars, chunk.number
+    failed = sorted(i for i in source_map if i not in salvaged)
+    if failed and len(failed) < len(source_map):
+        # Rescue pass: re-request ONLY the cues that never validated, with the
+        # chunk's salvaged translations as context. The smaller framing often
+        # escapes a leak the full-chunk regeneration kept re-triggering, and
+        # costs a few cues instead of a whole chunk.
+        _rescue_failed(
+            chunk=chunk,
+            base_values=base_values,
+            source_map=source_map,
+            salvaged=salvaged,
+            last_error=last_error,
+            translations=translations,
+            project=project,
+            llm=llm,
+            temperature=temperature,
+            retry_temps=retry_temps,
+        )
+        failed = sorted(i for i in source_map if i not in salvaged)
+
+    reason = "; ".join(
+        dict.fromkeys(last_error.get(i, "chunk validation failed") for i in failed)
     )
+    # Wrapping is decided by the target text's width, not inherited from the
+    # source: drop the model's line breaks and re-wrap each cue deterministically
+    # to <=2 balanced lines. (Korean is denser and differently spaced, so models
+    # tend to fragment the Vietnamese to mirror the source — this prevents that.)
+    wrapped = {i: subtitle.rewrap(body, max_line_chars) for i, body in salvaged.items()}
+    return wrapped, failed, reason
 
 
-def _tighten(
-    mapping: dict[int, str],
-    source_map: dict[int, str],
-    base_values: dict[str, Any],
+RESCUE_ATTEMPTS = 2
+
+
+def _repair_glossary_misses(
+    *,
+    project: Any,
+    bible: Bible,
+    doc: SubtitleDoc,
+    source_ref: SubtitleDoc,
+    qc_warnings: list[QCWarning],
     llm: LLMClient,
     temperature: float,
     max_line_chars: int,
-    chunk_number: int,
 ) -> dict[int, str]:
-    """One best-effort pass to shorten cues whose lines exceed the limit.
+    """Re-request cues QC flagged for missing glossary renderings.
 
-    Reading speed is a soft constraint: we ask the model once to shorten the
-    offending cues, keep the result only if it reduces the number of
-    over-length lines, and never hard-truncate.
+    One bounded attempt per group of nearby cues, with the required
+    ``term -> rendering`` pairs given as an explicit correction. A repair is
+    accepted only if it validates AND actually contains every required
+    rendering; otherwise the original translation stands. Returns the
+    accepted (already wrapped) replacements.
     """
-    over = _overlong(mapping, max_line_chars)
-    if not over:
-        return mapping
-    hint = _retry_hint(
-        f"these lines exceed {max_line_chars} characters and read too slowly: "
-        f"{sorted(over)}. Rephrase them more concisely (drop filler, tighten "
-        f"wording) and use \\N to keep every line at or under {max_line_chars} "
-        "characters. Keep the meaning and all other indices unchanged."
+    flagged = sorted(
+        {w.index for w in qc_warnings if w.kind == "glossary" and w.index is not None}
     )
-    prompt = prompts.render("pass2", retry_hint=hint, **base_values)
-    try:
-        raw = llm.generate_json(prompt, temperature=temperature)
-    except LLMError:
-        return mapping
-    tightened, error = _validate_chunk(raw, source_map)
-    if error is not None:
-        return mapping
-    if len(_overlong(tightened, max_line_chars)) < len(over):
-        logger.info("chunk %d: tightened %d over-length cue(s)", chunk_number, len(over))
-        return tightened
-    return mapping
-
-
-def _overlong(mapping: dict[int, str], max_line_chars: int) -> list[int]:
-    return [
-        index
-        for index, value in mapping.items()
-        if any(len(line) > max_line_chars for line in subtitle.rendered_lines(value))
+    if not flagged:
+        return {}
+    entries = [
+        (e["source"], e["target"])
+        for e in bible.glossary
+        if e.get("source") and e.get("target")
     ]
+    required: dict[int, list[tuple[str, str]]] = {}
+    for i in flagged:
+        src_text = source_ref.cue(i).plaintext
+        out_text = doc.cue(i).plaintext.lower()
+        need = [(t, r) for t, r in entries if t in src_text and r.lower() not in out_text]
+        if need:
+            required[i] = need
+    if not required:
+        return {}
+    logger.info(
+        "QC repair: re-requesting %d cue(s) with missing glossary renderings",
+        len(required),
+    )
+    accepted: dict[int, str] = {}
+    guide = project.load_guide()
+    for group in _group_indices(sorted(required), gap=2):
+        group_map = {i: source_ref.cue(i).body for i in group}
+        gloss_rows = [
+            {"source": t, "target": r, "note": "required"}
+            for i in group
+            for t, r in required[i]
+        ]
+        prev_ids = [j for j in range(group[0] - 4, group[0]) if j >= 0]
+        look_ids = [
+            j for j in range(group[-1] + 1, group[-1] + 3) if j < len(source_ref.cues)
+        ]
+        values = {
+            "source_language": language_name(project.source_language),
+            "target_language": language_name(project.target_language),
+            "honorific_policy_note": _honorific_note(project),
+            "narration_note": "(none)",
+            "style_note": project.style_guidance(),
+            "guide": guide or "(none)",
+            "series_context": "(none)",
+            "prev_summary": "(mid-episode repair)",
+            "characters": "(none)",
+            "names": "(none)",
+            "address": "(none)",
+            "glossary": _format_glossary(gloss_rows),
+            "prev_context": _format_prev(
+                [source_ref.cue(j) for j in prev_ids],
+                {j: doc.cue(j).body for j in prev_ids},
+            ),
+            "lookahead": _format_lookahead([source_ref.cue(j) for j in look_ids]),
+            "source_json": json.dumps(
+                {str(i): t for i, t in group_map.items()}, ensure_ascii=False, indent=2
+            ),
+            "max_line_chars": max_line_chars,
+        }
+        hint = _retry_hint(
+            "these lines previously omitted required glossary renderings: "
+            + "; ".join(
+                f"index {i} must contain {r!r} for {t!r}"
+                for i in group
+                for t, r in required[i]
+            )
+        )
+        prompt = prompts.render("pass2", retry_hint=hint, **values)
+        try:
+            raw = llm.generate_json(prompt, temperature=temperature)
+        except LLMError as exc:
+            logger.warning("QC repair request failed: %s", exc)
+            continue
+        mapping, _errors = _validate_chunk(raw, group_map, project.target_language)
+        for i, value in mapping.items():
+            if all(r.lower() in value.lower() for _, r in required[i]):
+                accepted[i] = subtitle.rewrap(value, max_line_chars)
+            else:
+                logger.info(
+                    "QC repair: cue %d still missing its rendering; keeping original", i
+                )
+    return accepted
+
+
+def _group_indices(indices: list[int], gap: int) -> list[list[int]]:
+    groups = [[indices[0]]]
+    for index in indices[1:]:
+        if index - groups[-1][-1] <= gap:
+            groups[-1].append(index)
+        else:
+            groups.append([index])
+    return groups
+
+
+def _rescue_failed(
+    *,
+    chunk: Chunk,
+    base_values: dict[str, Any],
+    source_map: dict[int, str],
+    salvaged: dict[int, str],
+    last_error: dict[int, str],
+    translations: dict[int, str],
+    project: Any,
+    llm: LLMClient,
+    temperature: float,
+    retry_temps: list[float],
+) -> None:
+    """Re-request only the never-validated cues, banking recoveries in place.
+
+    The chunk's already-salvaged cues are shown as translated context so the
+    rescued lines stay consistent with their neighbors. Skipped entirely when
+    the whole chunk failed structurally (rescue would just repeat it).
+    """
+    rescue_map = {i: source_map[i] for i in source_map if i not in salvaged}
+    logger.info(
+        "chunk %d: rescue pass for cue(s) %s", chunk.number, sorted(rescue_map)
+    )
+    values = dict(base_values)
+    values["source_json"] = json.dumps(
+        {str(i): t for i, t in rescue_map.items()}, ensure_ascii=False, indent=2
+    )
+    context_cues = chunk.prev + [c for c in chunk.cues if c.index in salvaged]
+    values["prev_context"] = _format_prev(context_cues, {**translations, **salvaged})
+    hint = _retry_hint(
+        _describe({i: last_error[i] for i in rescue_map if i in last_error})
+        or "previous attempts failed for these lines"
+    )
+    for attempt in range(1, RESCUE_ATTEMPTS + 1):
+        if attempt == 1 or not retry_temps:
+            attempt_temperature = temperature
+        else:
+            attempt_temperature = retry_temps[min(attempt - 2, len(retry_temps) - 1)]
+        prompt = prompts.render("pass2", retry_hint=hint, **values)
+        try:
+            raw = llm.generate_json(prompt, temperature=attempt_temperature)
+        except LLMError as exc:
+            logger.warning("chunk %d rescue attempt %d: %s", chunk.number, attempt, exc)
+            continue
+        mapping, errors = _validate_chunk(raw, rescue_map, project.target_language)
+        if None not in errors:
+            for index, body in mapping.items():
+                salvaged.setdefault(index, body)
+            for index, problem in errors.items():
+                last_error[index] = problem
+        missing = [i for i in rescue_map if i not in salvaged]
+        if not missing:
+            logger.info("chunk %d: rescue recovered all cue(s)", chunk.number)
+            return
+        if errors:
+            logger.warning(
+                "chunk %d rescue attempt %d invalid: %s",
+                chunk.number, attempt, _describe(errors),
+            )
+        hint = _retry_hint(_describe(errors) if errors else "reply unusable")
 
 
 def _validate_chunk(
-    raw: Any, source_map: dict[int, str]
-) -> tuple[dict[int, str] | None, str | None]:
-    """Validate a chunk response. Returns ``(mapping, None)`` or ``(None, hint)``."""
+    raw: Any, source_map: dict[int, str], target_language: str
+) -> tuple[dict[int, str], dict[int | None, str]]:
+    """Validate a chunk response per cue.
+
+    Returns ``(mapping, errors)``: *mapping* holds the individually valid
+    cues; *errors* maps a cue index (or ``None`` for chunk-level problems,
+    which make the whole reply unusable) to a retry hint. An empty *errors*
+    means the chunk validated completely.
+    """
     raw = _unwrap(raw, source_map)
     if not isinstance(raw, dict):
-        return None, "reply must be a JSON object mapping each index to a translation"
+        return {}, {None: "reply must be a JSON object mapping each index to a translation"}
 
     got = {str(k).strip(): v for k, v in raw.items()}
     expected = {str(i) for i in source_map}
@@ -316,22 +563,41 @@ def _validate_chunk(
             parts.append(f"missing indices {sorted(missing)}")
         if extra:
             parts.append(f"unexpected indices {sorted(extra)}")
-        return None, (
-            "the reply's indices must match the input exactly: "
-            + "; ".join(parts)
-        )
+        return {}, {
+            None: "the reply's indices must match the input exactly: " + "; ".join(parts)
+        }
 
     mapping: dict[int, str] = {}
+    errors: dict[int | None, str] = {}
     for index, body in source_map.items():
         value = got[str(index)]
         if not isinstance(value, str) or not value.strip():
-            return None, f"index {index} has an empty or non-string value"
+            errors[index] = f"index {index} has an empty or non-string value"
+            continue
         value = subtitle.normalize_linebreaks(value)
         preserve = preservation_error(body, value)
         if preserve is not None:
-            return None, f"index {index}: {preserve}"
+            errors[index] = f"index {index}: {preserve}"
+            continue
+        leak = qc.foreign_script(value, target_language)
+        if leak:
+            name = language_name(target_language)
+            errors[index] = (
+                f"index {index} contains {leak!r}, which is not {name}; "
+                f"rewrite that line entirely in {name}, expressing any "
+                "idiom with a native equivalent"
+            )
+            continue
         mapping[index] = value
-    return mapping, None
+    return mapping, errors
+
+
+def _describe(errors: dict[int | None, str]) -> str:
+    seen: list[str] = []
+    for key in sorted(errors, key=lambda x: (x is None, x if x is not None else -1)):
+        if errors[key] not in seen:
+            seen.append(errors[key])
+    return "; ".join(seen)
 
 
 def _unwrap(raw: Any, source_map: dict[int, str]) -> Any:
@@ -365,7 +631,7 @@ def _generate_summary(
         return ""
     prompt = prompts.render(
         "summary",
-        target_language=project.target_language,
+        target_language=language_name(project.target_language),
         prev_summary=prev_summary or "(this is the first episode)",
         dialogue="\n".join(lines),
     )
@@ -389,16 +655,25 @@ def _narration_note(narrators: set[str]) -> str:
 
 def _honorific_note(project: Any) -> str:
     template = _HONORIFIC_NOTES.get(project.honorific_policy, _HONORIFIC_NOTES["translate"])
-    return template.format(target=project.target_language)
+    return template.format(target=language_name(project.target_language))
 
 
-def _relevant_glossary(bible: Bible, source_bodies: Any) -> list[dict[str, Any]]:
+def _merge_terms(
+    dictionary: list[dict[str, Any]], glossary: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Base dictionary overlaid by the show glossary (glossary wins per term)."""
+    merged: dict[str, dict[str, Any]] = {}
+    for entry in list(dictionary) + list(glossary):
+        if entry.get("source") and entry.get("target"):
+            merged[entry["source"]] = entry
+    return list(merged.values())
+
+
+def _relevant_terms(
+    terms: list[dict[str, Any]], source_bodies: Any
+) -> list[dict[str, Any]]:
     joined = "\n".join(source_bodies)
-    return [
-        e
-        for e in bible.glossary
-        if e.get("source") and e.get("target") and e["source"] in joined
-    ]
+    return [e for e in terms if e["source"] in joined]
 
 
 def _format_characters(chars: list[dict[str, Any]]) -> str:

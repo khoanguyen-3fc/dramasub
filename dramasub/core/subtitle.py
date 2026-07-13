@@ -103,6 +103,60 @@ def rendered_lines(text: str) -> list[str]:
     return _TAG_RE.sub("", text).replace(_LINEBREAK_TOKEN, "\n").split("\n")
 
 
+def display_len(text: str) -> int:
+    """Character width of *text* as rendered (override tags don't count)."""
+    return len(_TAG_RE.sub("", text))
+
+
+def rewrap(body: str, max_line_chars: int, max_lines: int = 2) -> str:
+    """Re-wrap a translated cue body by the target text's width.
+
+    Line breaks are chosen from the Vietnamese width, not inherited from the
+    (denser, differently spaced) Korean source: the model's ``\\N`` are dropped,
+    the text is joined into one logical line, then balanced into at most
+    *max_lines* lines each within *max_line_chars*. Two-speaker dash cues keep
+    their per-speaker split. Only when the text genuinely cannot fit in
+    *max_lines* lines does it spill to more (never truncated).
+    """
+    parts = [p.strip() for p in re.split(r"\\N|\n", body) if p.strip()]
+    if not parts:
+        return body.strip()
+    # two-speaker dialogue ("- A" / "- B"): keep each speaker on its own line
+    if len(parts) >= 2 and all(p.lstrip().startswith("-") for p in parts):
+        return _LINEBREAK_TOKEN.join(parts)
+    single = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    if display_len(single) <= max_line_chars:
+        return single
+    return _LINEBREAK_TOKEN.join(_balance(single, max_line_chars, max_lines))
+
+
+def _balance(text: str, max_line_chars: int, max_lines: int) -> list[str]:
+    words = text.split(" ")
+    if max_lines >= 2:  # prefer the most balanced two-line split that fits
+        best: tuple[int, list[str]] | None = None
+        for k in range(1, len(words)):
+            l1, l2 = " ".join(words[:k]), " ".join(words[k:])
+            if display_len(l1) <= max_line_chars and display_len(l2) <= max_line_chars:
+                score = abs(display_len(l1) - display_len(l2))
+                if best is None or score < best[0]:
+                    best = (score, [l1, l2])
+        if best is not None:
+            return best[1]
+    # too long for two lines: greedy fill (rare; may exceed max_lines)
+    lines: list[str] = []
+    cur = ""
+    for word in words:
+        candidate = f"{cur} {word}".strip()
+        if cur and display_len(candidate) > max_line_chars:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = candidate
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 @dataclass
 class Cue:
     """A single subtitle event, addressed by its integer ``index``.

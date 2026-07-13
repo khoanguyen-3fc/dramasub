@@ -25,6 +25,7 @@ from typing import Any
 from dramasub.core._yaml import read_yaml, write_yaml
 from dramasub.core.bible import Bible, load_bible, new_bible, save_bible
 from dramasub.core.errors import ProjectError, ValidationError
+from dramasub.core.lang import language_name
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "honorific_policy": "translate",
     "loanword_policy": "keep_english",
     "romanization": "media",
+    # Translation guide + base dictionary injected into prompts. "default"
+    # resolves to the packaged file for the project's language pair when one
+    # ships (e.g. ko->vi K-drama); "none" disables; any other value is a path
+    # (relative to the project root) to a user-supplied file — the way to
+    # support other genres or language pairs.
+    "guide": "default",
+    "dictionary": "default",
     "temperature": {"pass1": 0.7, "pass2": 0.3, "summary": 0.7},
+    # Temperatures for pass-2 retry attempts (first retry, second retry, ...).
+    # Hotter retries help escape a stubborn wrong output the model keeps
+    # regenerating at low temperature; the first attempt uses temperature.pass2.
+    "retry_temperatures": [0.55, 0.8],
     "chunk": {"size": 12, "prev_window": 8, "lookahead": 4},
     "max_line_chars": 42,
 }
@@ -55,6 +67,9 @@ PROJECT_FILE = "project.yaml"
 BIBLE_FILE = "bible.yaml"
 CACHE_DIR = "cache"
 EPISODES_DIR = "episodes"
+
+# Packaged default guides/dictionaries, keyed by file name per language pair.
+DEFAULTS_DIR = Path(__file__).parent / "defaults"
 
 
 class Project:
@@ -118,16 +133,18 @@ class Project:
 
     def style_guidance(self) -> str:
         """Prompt-ready guidance for loanwords and name romanization."""
+        source = language_name(self.source_language)
+        target = language_name(self.target_language)
         parts = []
         if self.loanword_policy == "keep_english":
             parts.append(
-                f"Keep loanwords that {self.source_language} speakers themselves "
+                f"Keep loanwords that {source} speakers themselves "
                 "use in English (e.g. TF, KPI, highball, prototype, retro) rather "
-                f"than forcing a {self.target_language} word."
+                f"than forcing a {target} word."
             )
         else:
             parts.append(
-                f"Prefer natural {self.target_language} words over English "
+                f"Prefer natural {target} words over English "
                 "loanwords wherever it does not sound stiff."
             )
         if self.romanization == "media":
@@ -138,7 +155,7 @@ class Project:
         else:
             parts.append(
                 "Romanize personal names using the standard academic "
-                f"romanization for {self.source_language}."
+                f"romanization for {source}."
             )
         return " ".join(parts)
 
@@ -150,6 +167,14 @@ class Project:
         temps = self.config.get("temperature", {}) or {}
         default = DEFAULT_CONFIG["temperature"][pass_name]
         return float(temps.get(pass_name, default))
+
+    @property
+    def retry_temperatures(self) -> list[float]:
+        """Per-retry temperatures for pass 2 (may be empty: retries stay cool)."""
+        values = self.config.get(
+            "retry_temperatures", DEFAULT_CONFIG["retry_temperatures"]
+        )
+        return [float(v) for v in values]
 
     def chunk_setting(self, key: str) -> int:
         chunk = self.config.get("chunk", {}) or {}
@@ -205,6 +230,67 @@ class Project:
             if n is not None and child.is_dir():
                 numbers.append(n)
         return sorted(numbers)
+
+    def load_episode_context(self, number: int) -> dict[str, Any] | None:
+        """The saved pass-1 context for an episode, or ``None`` if never run."""
+        path = self.episode_context(number)
+        if not path.is_file():
+            return None
+        return read_yaml(path)
+
+    # -- guide / dictionary --------------------------------------------------
+    def guide_path(self) -> Path | None:
+        """Resolved translation-guide file, or ``None`` when disabled/absent."""
+        return self._resolve_asset(
+            "guide", f"guide.{self.source_language}-{self.target_language}.txt"
+        )
+
+    def dictionary_path(self) -> Path | None:
+        """Resolved base-dictionary file, or ``None`` when disabled/absent."""
+        return self._resolve_asset(
+            "dictionary",
+            f"dictionary.{self.source_language}-{self.target_language}.yaml",
+        )
+
+    def load_guide(self) -> str:
+        """Translation-guide text for prompts ('' when none configured)."""
+        path = self.guide_path()
+        if path is None:
+            return ""
+        lines = path.read_text(encoding="utf-8").splitlines()
+        body = [ln for ln in lines if not ln.startswith("#")]
+        return "\n".join(body).strip()
+
+    def load_dictionary(self) -> list[dict[str, Any]]:
+        """Base dictionary entries (``{source, target, note?}``); may be empty.
+
+        These guide generation like glossary entries but are NOT enforced by
+        QC — only the hand-curated project bible glossary is.
+        """
+        path = self.dictionary_path()
+        if path is None:
+            return []
+        terms = read_yaml(path).get("terms", [])
+        return [
+            t for t in terms
+            if isinstance(t, dict) and t.get("source") and t.get("target")
+        ]
+
+    def _resolve_asset(self, key: str, packaged_name: str) -> Path | None:
+        value = self.config.get(key, DEFAULT_CONFIG[key])
+        if value in (None, "", "none"):
+            return None
+        if value == "default":
+            packaged = DEFAULTS_DIR / packaged_name
+            # No packaged file for this language pair -> silently none; users
+            # supply their own via a path for other pairs/genres.
+            return packaged if packaged.is_file() else None
+        path = Path(value)
+        if not path.is_absolute():
+            path = self.root / path
+        if not path.is_file():
+            raise ProjectError(f"{key} file not found: {path}")
+        return path
 
     # -- bible -------------------------------------------------------------
     def load_bible(self) -> Bible:
@@ -305,6 +391,21 @@ def validate_config(config: dict[str, Any]) -> None:
     num_ctx = config.get("num_ctx", DEFAULT_CONFIG["num_ctx"])
     if not isinstance(num_ctx, int) or num_ctx <= 0:
         raise ValidationError(f"project config: num_ctx must be a positive int, got {num_ctx!r}")
+    for key in ("guide", "dictionary"):
+        value = config.get(key, DEFAULT_CONFIG[key])
+        if value is not None and not isinstance(value, str):
+            raise ValidationError(
+                f"project config: {key} must be 'default', 'none', or a file "
+                f"path, got {value!r}"
+            )
+    retry_temps = config.get("retry_temperatures", DEFAULT_CONFIG["retry_temperatures"])
+    if not isinstance(retry_temps, list) or not all(
+        isinstance(v, (int, float)) and 0 <= v <= 2 for v in retry_temps
+    ):
+        raise ValidationError(
+            "project config: retry_temperatures must be a list of numbers "
+            f"between 0 and 2, got {retry_temps!r}"
+        )
     tmdb_id = config.get("tmdb_id")
     if tmdb_id is not None and not isinstance(tmdb_id, int):
         raise ValidationError(f"project config: tmdb_id must be an int or null, got {tmdb_id!r}")
