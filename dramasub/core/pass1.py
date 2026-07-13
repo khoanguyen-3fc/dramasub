@@ -19,6 +19,7 @@ from typing import Any
 from dramasub.core import prompts
 from dramasub.core._yaml import write_yaml
 from dramasub.core.bible import Bible
+from dramasub.core.lang import language_name
 from dramasub.core.llm import LLMClient
 from dramasub.core.subtitle import SubtitleDoc
 
@@ -76,7 +77,15 @@ def extract_context(
 
     known_characters = _format_characters(bible)
     known_address = _format_address(bible)
-    known_glossary = _format_glossary(bible)
+    # Show the base dictionary alongside the show glossary so pass 1 doesn't
+    # re-propose universal terms (bible wins per source term).
+    dictionary = project.load_dictionary()
+    dictionary_sources = {e["source"] for e in dictionary}
+    known_terms: dict[str, dict[str, Any]] = {}
+    for entry in dictionary + bible.glossary:
+        if entry.get("source") and entry.get("target"):
+            known_terms[entry["source"]] = entry
+    known_glossary = _format_glossary(list(known_terms.values()))
     honorific_note = _honorific_note(project)
     temperature = project.temperature("pass1")
 
@@ -87,8 +96,8 @@ def extract_context(
         label = f"{seg_no}/{len(segments)} (cues {seg[0]}-{seg[-1]})"
         prompt = prompts.render(
             "pass1",
-            source_language=project.source_language,
-            target_language=project.target_language,
+            source_language=language_name(project.source_language),
+            target_language=language_name(project.target_language),
             segment_label=label,
             series_context=series_context or "(none provided)",
             prev_summary=prev_summary or "(this is the first analyzed segment)",
@@ -105,6 +114,23 @@ def extract_context(
         normalized = _normalize_context(raw, episode)
         _merge_into(merged, normalized)
 
+    # Never auto-apply a glossary proposal the base dictionary already covers:
+    # the bible outranks the dictionary, so an auto-proposal would permanently
+    # shadow the curated default. Overriding a default is a human decision,
+    # made by adding the term to bible.yaml by hand.
+    proposals = merged["proposed_updates"].get("glossary", [])
+    kept = [
+        t for t in proposals
+        if not _covered_by(t.get("source") or "", dictionary_sources)
+    ]
+    if len(kept) != len(proposals):
+        skipped = [t.get("source", "?") for t in proposals if t not in kept]
+        logger.info(
+            "pass 1: skipped %d glossary proposal(s) already covered by the "
+            "base dictionary: %s", len(skipped), ", ".join(skipped),
+        )
+    merged["proposed_updates"]["glossary"] = kept
+
     applied = bible.apply_updates(episode, merged["proposed_updates"])
     merged["applied_updates"] = applied
 
@@ -119,9 +145,26 @@ def extract_context(
     return Pass1Result(episode=episode, context=merged, applied_updates=applied)
 
 
+def _covered_by(source: str, dictionary_sources: set[str]) -> bool:
+    """True when a proposed term is already covered by the base dictionary.
+
+    Covers exact matches and short suffixed variants (e.g. an honorific
+    particle appended to a dictionary term), so "<term>님"-style proposals
+    don't shadow the curated default either.
+    """
+    if not source:
+        return False
+    if source in dictionary_sources:
+        return True
+    return any(
+        source.startswith(term) and len(source) - len(term) <= 2
+        for term in dictionary_sources
+    )
+
+
 def _honorific_note(project: Any) -> str:
     template = _HONORIFIC_NOTES.get(project.honorific_policy, _HONORIFIC_NOTES["translate"])
-    return template.format(target=project.target_language)
+    return template.format(target=language_name(project.target_language))
 
 
 def _segments(indices: list[int], segment_cues: int) -> list[list[int]]:
@@ -172,11 +215,11 @@ def _format_address(bible: Bible) -> str:
     return "\n".join(out)
 
 
-def _format_glossary(bible: Bible) -> str:
-    if not bible.glossary:
+def _format_glossary(entries: list[dict[str, Any]]) -> str:
+    if not entries:
         return "(none known yet)"
     out = []
-    for term in bible.glossary:
+    for term in entries:
         line = f"- {term.get('source')} = {term.get('target')}"
         if term.get("note"):
             line += f" ({term.get('note')})"
