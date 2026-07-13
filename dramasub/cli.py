@@ -133,11 +133,18 @@ def cmd_bible(args: argparse.Namespace) -> int:
 
 def cmd_translate(args: argparse.Namespace) -> int:
     project = project_mod.load(args.project)
+    if args.direct and args.pass2_only:
+        raise DramasubError("--direct and --pass2-only are mutually exclusive")
     client = llm.build_client(project)
 
-    print(f"importing episode {args.episode} source: {args.file}")
-    project.import_episode_source(args.episode, args.file)
+    if args.file is not None:
+        print(f"importing episode {args.episode} source: {args.file}")
+        project.import_episode_source(args.episode, args.file)
     src_path = project.episode_source_existing(args.episode)
+    if src_path is None:
+        raise DramasubError(
+            f"no source imported for episode {args.episode}; pass the subtitle file"
+        )
     doc = subtitle.load(src_path)
     bible = project.load_bible()
 
@@ -145,7 +152,18 @@ def cmd_translate(args: argparse.Namespace) -> int:
     prev_summary = _prev_summary(project, args.episode)
 
     episode_context = None
-    if args.direct:
+    if args.pass2_only:
+        # Reuse the saved pass-1 context and current bible — for re-translating
+        # after a prompt/model/bible change without re-running the analysis.
+        episode_context = project.load_episode_context(args.episode)
+        if episode_context is None:
+            raise DramasubError(
+                f"no saved context for episode {args.episode}; run a full "
+                "translate first (or use --direct)"
+            )
+        print(f"pass 2 only: reusing saved context "
+              f"({len(episode_context.get('characters_present', []))} characters)")
+    elif args.direct:
         # One-pass direct translate: no pass-1 analysis, no bible updates —
         # only whatever online (TMDB) context exists. Lower quality/consistency
         # but roughly half the model calls; useful as a fast baseline.
@@ -166,7 +184,7 @@ def cmd_translate(args: argparse.Namespace) -> int:
             for note in p1.applied_updates:
                 print(f"    - {note}")
 
-    print("pass 2: translating..." if not args.direct else "translating (one pass)...")
+    print("translating (one pass)..." if args.direct else "pass 2: translating...")
     result = pass2.translate_episode(
         project, bible, doc,
         episode=args.episode, llm=client,
@@ -190,7 +208,13 @@ def cmd_qc(args: argparse.Namespace) -> int:
     output = subtitle.load(out_path)
     subtitle.verify_timing(source, output)
     bible = project.load_bible()
-    warnings = qc.run_qc(bible, source, output, max_line_chars=project.max_line_chars)
+    warnings = qc.run_qc(
+        bible,
+        source,
+        output,
+        max_line_chars=project.max_line_chars,
+        target_language=project.target_language,
+    )
     print(f"QC for episode {args.episode}: {len(warnings)} warning(s)")
     for warning in warnings:
         print(f"  {warning}")
@@ -299,11 +323,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p_tr.add_argument("project", type=Path)
     p_tr.add_argument("--episode", type=int, required=True)
     p_tr.add_argument("--season", type=int, default=1)
-    p_tr.add_argument("file", type=Path, help="the source subtitle file")
+    p_tr.add_argument("file", type=Path, nargs="?", default=None,
+                      help="the source subtitle file (optional if already imported)")
     p_tr.add_argument("--no-summary", action="store_true", help="skip episode summary")
     p_tr.add_argument("--direct", action="store_true",
                       help="one-pass direct translate: skip pass 1 and the bible, "
                            "use only online (TMDB) context (faster, less consistent)")
+    p_tr.add_argument("--pass2-only", action="store_true", dest="pass2_only",
+                      help="skip pass 1 and reuse the episode's saved context.yaml "
+                           "and current bible (for re-translating after a prompt, "
+                           "model, or bible change)")
     p_tr.set_defaults(func=cmd_translate)
 
     p_qc = sub.add_parser("qc", help="re-run QC on a translated episode")
