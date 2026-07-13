@@ -39,6 +39,13 @@ flowchart LR
 
 ## Advantages
 
+Pushing subtitles through an LLM line by line is the easy part. The hard part of
+long-form drama is everything *between* the lines — a name that must read the same
+in episode 9 as in episode 1, honorifics that don't exist in the target language,
+who addresses whom and how. dramasub is built around a per-show memory that
+compounds across episodes, so that consistency is the default rather than a manual
+chore.
+
 - **Translates direct from the source language, not a pivot.** Most fan subs are
   relayed through English, which compounds a second language's drift, reordering,
   and errors. dramasub goes Korean→Vietnamese directly, staying closer to the
@@ -49,9 +56,12 @@ flowchart LR
 - **The model never touches timing or structure.** Cues are parsed and
   reassembled programmatically; every write is verified against the source (cue
   count + every timestamp) or aborted — no desync, no dropped lines.
-- **Consistency across a series.** A per-show bible freezes character names, a
-  directed address table fixes who calls whom what, and a glossary pins recurring
-  terms — set once, hand-correctable, applied to every later cue and episode.
+- **Register consistency across a series — the part that usually breaks.** A
+  per-show *bible* accumulates characters plus a **directed address table**: how
+  each person speaks to each other person (Korean speech levels → Vietnamese
+  `anh`/`em`/`cô`/`con`…), where A→B may legitimately differ from B→A and shifts
+  the moment a relationship does. Learned in pass 1, hand-correctable, and
+  reapplied to every later cue and episode alongside a frozen name/term glossary.
 - **Local, offline, private, free.** Runs on your own Ollama — even a 12 GB GPU —
   with no cloud, no per-token cost, and subtitles never leaving your machine.
 - **Human-in-the-loop by design.** Everything the model infers is editable YAML;
