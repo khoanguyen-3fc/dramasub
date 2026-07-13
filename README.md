@@ -142,10 +142,11 @@ gitignored.
 ```dotenv
 OLLAMA_HOST=http://10.0.0.20:11434
 TMDB_API_KEY=eyJhbGci...
-``` `bible.yaml` holds
-characters (each with a **frozen** `target` name rendering so names never drift
-between episodes), relationships, a **directed** address table (the
-target-language terms a speaker uses for themself and the listener), and a
+```
+
+`bible.yaml` holds characters (each with a **frozen** `target` name rendering so
+names never drift between episodes), relationships, a **directed** address table
+(the target-language terms a speaker uses for themself and the listener), and a
 glossary. Both are human-editable — the tool only appends and updates, never
 silently deletes.
 
