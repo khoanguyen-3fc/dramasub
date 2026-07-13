@@ -1,4 +1,8 @@
 # pass1 — episode context extraction
+# version: 4 — record gender in character roles and require address-table
+#             proposals for recurring pairs (pronoun choice is the dominant
+#             judged quality gap and needs this data); language placeholders
+#             receive full names ("Korean"), not config codes ("ko")
 # version: 3 — detect narrators/commentators (lines with no addressee)
 ---
 You are a subtitle-localization analyst. You read numbered dialogue lines from a
@@ -66,6 +70,11 @@ Rules:
 - Use canonical character names consistently (prefer the ones already known).
 - For every character give a single ``target`` rendering of the name and use
   it consistently; this spelling will be frozen and reused in later episodes.
+- State each character's gender and standing in ``role`` (e.g. "female team
+  lead", "male CEO's mother") — target-language pronoun choice depends on it.
+- Propose an address row for every recurring speaker pair you can support:
+  these rows are what keeps pronouns and speech level correct downstream, so
+  prefer proposing one (with a note) over leaving a pair uncovered.
 - Only include an address row when you can infer BOTH the self-term and the
   other-term in ${target_language}. Flag confessions, fights, or the first
   switch to informal speech as address updates with a note.

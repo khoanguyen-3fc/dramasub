@@ -1,4 +1,6 @@
 # summary — post-episode recap
+# version: 2 — language placeholder now receives the full name ("Vietnamese"),
+#             not the config code ("vi")
 # version: 1 — initial two-pass pipeline
 ---
 You are tracking the continuity of a drama series. Write a concise recap of the
