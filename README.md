@@ -141,7 +141,19 @@ summary.txt     recap that feeds the next episode's context
 `keep_alive`, `ollama_host` (the Ollama server URL, default
 `http://localhost:11434`), `honorific_policy` (`translate` vs `keep_romanized`),
 `loanword_policy` (`keep_english` vs `localize`), `romanization` (`media` vs
-`revised`), chunk sizes, and per-pass temperatures.
+`revised`), chunk sizes, per-pass temperatures, and `retry_temperatures` (the
+temperatures used by pass-2 retry attempts — hotter retries help the model
+escape a stubborn wrong output).
+
+dramasub ships a **default K-drama translation guide and base dictionary** for
+Korean→Vietnamese (~100 mined terms: workplace ranks, kinship/address,
+interjections, food, romance vocabulary), used automatically when a project's
+language pair matches. The guide is injected into translation prompts; the
+dictionary sits **under** the show's bible glossary (the bible always wins) and
+is filtered per chunk. Control both via `guide:` and `dictionary:` in
+`project.yaml` — `default`, `none`, or a path to your own file, which is how
+other genres or language pairs bring their own. The base dictionary informs the
+model but is not enforced by QC; only the curated bible glossary is.
 
 A `.env` file in the working directory is loaded automatically (existing
 environment wins), so secrets and machine-specific settings can live outside

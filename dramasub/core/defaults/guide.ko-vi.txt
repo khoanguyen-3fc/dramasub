@@ -1,0 +1,46 @@
+# dramasub default translation guide — K-drama, Korean -> Vietnamese
+# version: 2 — masked/initialed names stay masked (a review found an initial
+#             resolved to a full name, destroying deliberate ambiguity)
+# version: 1 — synthesized from three parallel KO/VI drama corpora (an office
+#             romance, an official producer sub, a revenge drama) plus judged
+#             failure modes from live benchmarking. Lines starting with '#'
+#             are stripped before prompt injection; keep the body dense —
+#             it is paid on every chunk.
+Pronoun pairs are locked per relationship (the address table always wins):
+- spouses/lovers: anh-em; 오빠 from a wife/girlfriend is the pronoun "anh"
+- close same-age friends: tớ/mình-cậu
+- adult colleagues or strangers: tôi-cô/anh; open hostility only: tao-mày
+- junior to senior at work: em + sentence-final "ạ"; senior to junior: tôi-cậu/em
+- child to parent: con-mẹ/bố; to elders or a lover's parents: cháu/con-bác/ông/bà
+- parents and elder siblings self-refer by kinship term (mẹ, bố, chị), not "tôi"
+- narration or commentary speaks in third person; never archaic ngươi/ta in a
+  modern drama.
+
+Deference and particles: -요/-습니다 -> final "ạ"; -잖아(요) -> "mà";
+-네(요) -> "nhỉ"; -죠 -> "chứ"; vocative -아/야 -> "[Tên] à";
+(이름) 씨 -> anh/cô + given name.
+
+Job titles: always translate to the Vietnamese title (see glossary), placed
+before the name ("김 선임" -> "Trợ lý Kim"); a bare title works as a vocative or
+as "you"; never romanize a title (no "seonim", "chaekim").
+
+Masked or initialed names stay masked — the ambiguity is deliberate: map the
+initial to its romanized initial ("ㅊ 선임" -> "Trợ lý C", "김○○" -> "Kim ○○");
+never resolve one to a full name.
+
+Interjections translate by function, never escalated: 야 -> "Này",
+어머 -> "Ôi trời", 아이고 -> "Ôi" (or drop), 여보세요 on the phone -> "Alo",
+짠 -> "Cạn ly". Small fillers may be dropped.
+
+Idioms and slang: use the everyday Vietnamese idiom of the same register
+(재수 없다 -> "khó ưa", 연애를 못 하다 -> "ế"); if none exists, say the plain
+meaning. Never calque another language's idiom.
+
+Loanwords and brand names stay in Latin script (TF, KPI, soju, brand names);
+Korean foods keep their name with a Vietnamese classifier (bánh tteok, mandu).
+Insider abbreviations expand to the full name they stand for. Currency stays
+in won with magnitudes converted: 백만 원 -> "một triệu won"; use the
+Vietnamese decimal comma.
+
+Subtitles must be finishable: keep each cue concise; when one sentence spans
+cues, end the earlier cue with a comma and start the next lowercase.
