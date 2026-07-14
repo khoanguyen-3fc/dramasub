@@ -73,7 +73,7 @@ class OllamaClient(LLMClient):
     """Talks to Ollama's ``/api/generate`` endpoint via ``requests``."""
 
     host: str = "http://localhost:11434"
-    model: str = "qwen3.6:latest"
+    model: str = "gemma4:latest"
     num_ctx: int = 16384
     keep_alive: str = "30m"
     think: bool = False

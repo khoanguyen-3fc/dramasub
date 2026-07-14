@@ -40,7 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "tmdb_id": None,
     "source_language": "ko",
     "target_language": "vi",
-    "model": "qwen3.6:latest",
+    "model": "gemma4:latest",
     "num_ctx": 16384,
     "keep_alive": "30m",
     "ollama_host": "http://localhost:11434",
