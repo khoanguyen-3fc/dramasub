@@ -1,11 +1,17 @@
 # dramasub default dictionary — K-drama, Korean -> Vietnamese
+# version: 2 — expanded with universal, show-agnostic K-drama vocabulary:
+#              harsh address/insults (a model rendered 이놈아 as the flat
+#              "đồ này" instead of a natural "thằng ranh này"), high-frequency
+#              interjections/discourse, common drama tropes, and everyday
+#              workplace/food terms. All entries are genre-generic, not tied
+#              to any one show.
 # version: 1 — mined from three parallel KO/VI drama corpora (an office
 #              romance, an official producer subtitle, a revenge drama);
 #              conflicts resolved toward the official sub, English-pivot
 #              artifacts excluded. Merged UNDER each project's bible glossary
 #              (the bible wins per term) and filtered per chunk; guides
 #              generation but is NOT enforced by QC.
-version: 1
+version: 2
 terms:
   # --- workplace titles / ranks ---
   - source: 사원
@@ -329,3 +335,117 @@ terms:
   - source: 신분증
     target: thẻ căn cước
     note: ID card, VN-localized
+  # --- harsh address / insults (translate by force, never literal "đồ này") ---
+  - source: 이놈아
+    target: thằng ranh này
+    note: exasperated address to a younger male (parent/elder to junior); never the flat literal "đồ này"; softer "thằng nhóc này"
+  - source: 이놈
+    target: thằng này
+    note: an irritated "this guy"; stronger is 이 자식
+  - source: 자식
+    target: thằng nhóc
+    note: kid/guy; affectionate with 이/우리, an insult by tone; not literally con cái
+  - source: 새끼
+    target: thằng khốn
+    note: strong insult; soften to "thằng nhóc" only when clearly affectionate
+  - source: 미친놈
+    target: thằng điên
+    note: crazy bastard; female target con điên
+  - source: 바보
+    target: đồ ngốc
+    note: mild "idiot/fool", often teasing
+  # --- spousal / lover address ---
+  - source: 여보
+    target: mình ơi
+    note: vocative between spouses
+  - source: 자기야
+    target: cưng à
+    note: lovers' pet name; also "em yêu"/"anh yêu"
+  - source: 당신
+    target: anh
+    note: spousal "mình/anh/em"; confrontational to a stranger "ông/bà"; never literal "bạn"
+  # --- interjections / discourse (expanded) ---
+  - source: 대박
+    target: đỉnh thật
+    note: amazement "awesome"; for shock "khủng khiếp"
+  - source: 헐
+    target: trời đất
+    note: disbelief "whoa/what"
+  - source: 화이팅
+    target: cố lên
+    note: encouragement "fighting!"; also 파이팅
+  - source: 그러게
+    target: thì đấy
+    note: rueful agreement "right?/tell me about it"
+  - source: 어차피
+    target: dù sao thì
+    note: anyway / in any case
+  - source: 그나저나
+    target: mà này
+    note: topic shift "anyway/by the way"
+  - source: 됐어
+    target: thôi đủ rồi
+    note: enough / forget it; dismissive bỏ đi
+  - source: 어쩐지
+    target: thảo nào
+    note: no wonder ("that explains it")
+  - source: 눈치
+    target: sự tinh ý
+    note: reading the room; 눈치 보다 "dò xét thái độ", 눈치 없다 "vô ý"
+  - source: 축하해
+    target: chúc mừng
+    note: congratulations; formal 축하합니다 adds "ạ"
+  - source: 사랑해
+    target: yêu em
+    note: I love you; pick pronoun by speaker (anh yêu em / em yêu anh)
+  - source: 보고 싶어
+    target: nhớ em
+    note: I miss you; pick pronoun by relationship
+  # --- drama tropes (expanded) ---
+  - source: 재벌
+    target: tài phiệt
+    note: chaebol / conglomerate family
+  - source: 상견례
+    target: lễ ra mắt hai họ
+    note: formal first meeting of both families before a marriage
+  - source: 인연
+    target: nhân duyên
+    note: fated connection between people
+  - source: 운명
+    target: định mệnh
+    note: destiny/fate
+  - source: 오해
+    target: hiểu lầm
+    note: misunderstanding
+  - source: 복수
+    target: trả thù
+    note: revenge; also "báo thù"
+  # --- workplace (expanded) ---
+  - source: 승진
+    target: thăng chức
+    note: promotion
+  - source: 해고
+    target: sa thải
+    note: to fire/lay off
+  - source: 사표
+    target: đơn xin nghỉ việc
+    note: resignation letter; 사표 내다 "nộp đơn nghỉ việc"
+  - source: 갑질
+    target: thói hống hách
+    note: a superior abusing power over subordinates; "chèn ép cấp dưới"
+  # --- food / everyday culture (expanded) ---
+  - source: 라면
+    target: mì gói
+    note: instant noodles; a noodle-shop bowl is just "mì"
+  - source: 김밥
+    target: cơm cuộn
+    note: gimbap; loanword "kimbap" also fine
+  - source: 편의점
+    target: cửa hàng tiện lợi
+    note: convenience store
+  - source: 해장국
+    target: canh giải rượu
+    note: hangover soup
+  - source: 포장마차
+    target: quán nhậu vỉa hè
+    note: street food-and-drink tent (pojangmacha)
