@@ -60,6 +60,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # regenerating at low temperature; the first attempt uses temperature.pass2.
     "retry_temperatures": [0.55, 0.8],
     "chunk": {"size": 12, "prev_window": 8, "lookahead": 4},
+    # Max characters PER LINE — the standard professional-subtitling convention
+    # (~42 chars/line for Latin-script languages, e.g. Netflix's guideline); with
+    # the 2-line cap that is an ~84-char budget per cue. This single value is the
+    # one source of truth: rewrap/_balance (subtitle.py), the pass-2 tighten pass,
+    # and QC's check_length all take it from here — no literal 42 lives in the
+    # algorithms, so overriding `max_line_chars` in project.yaml changes them all.
+    # Measured as Unicode codepoints of the tag-stripped text (fine for NFC
+    # Vietnamese); it is a line-LENGTH limit, not a reading-speed (CPS) limit.
     "max_line_chars": 42,
 }
 

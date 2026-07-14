@@ -72,6 +72,20 @@ class TranslateResult:
         return self.translated_count + len(self.failed_indices)
 
 
+def _rewrap_doc(doc: SubtitleDoc, max_line_chars: int) -> None:
+    """Re-wrap every cue's current body straight from the doc, right before a
+    write. The last line of defense against a shipped 3+-line cue: idempotent,
+    and independent of how the value reached the doc (main pass, cross-attempt
+    salvage, rescue, or QC repair), so no path can leak a raw model line break
+    into the output. Cues too long to fit two lines are left as-is (never
+    truncated); those are a translation-length issue, not a wrapping one.
+    """
+    doc.apply(
+        {c.index: subtitle.rewrap(c.body, max_line_chars)
+         for c in doc.cues if c.body.strip()}
+    )
+
+
 def translate_episode(
     project: Any,
     bible: Bible,
@@ -170,6 +184,7 @@ def translate_episode(
     if write:
         source_ref = subtitle.load(doc.path)
         out_path = project.episode_dir(episode) / f"output{doc.path.suffix.lower()}"
+        _rewrap_doc(doc, max_line_chars)
         subtitle.save_verified(doc, out_path, source_ref)
         result.output_path = out_path
         result.qc_warnings = qc.run_qc(
@@ -196,6 +211,24 @@ def translate_episode(
         if repaired:
             translations.update(repaired)
             doc.apply(repaired)
+        # Tighten pass: rewrap can only re-break, so a cue that is genuinely too
+        # long for two lines (>~2x max_line_chars, or an unbreakable segment) is
+        # re-requested more concisely. Reads the doc AFTER repair.
+        tightened = _tighten_overlong(
+            project=project,
+            bible=bible,
+            doc=doc,
+            source_ref=source_ref,
+            llm=llm,
+            temperature=temperature,
+            retry_temps=project.retry_temperatures,
+            max_line_chars=max_line_chars,
+        )
+        if tightened:
+            translations.update(tightened)
+            doc.apply(tightened)
+        if repaired or tightened:
+            _rewrap_doc(doc, max_line_chars)
             subtitle.save_verified(doc, out_path, source_ref)
             result.qc_warnings = qc.run_qc(
                 bible,
@@ -205,8 +238,8 @@ def translate_episode(
                 target_language=project.target_language,
             )
             logger.info(
-                "QC repair fixed %d cue(s); %d warning(s) remain",
-                len(repaired), len(result.qc_warnings),
+                "post-pass regen: %d repaired, %d tightened; %d warning(s) remain",
+                len(repaired), len(tightened), len(result.qc_warnings),
             )
 
     if generate_summary:
@@ -362,6 +395,7 @@ def _translate_chunk(
 
 
 RESCUE_ATTEMPTS = 2
+TIGHTEN_ATTEMPTS = 3  # over-long cues are few; a couple of hotter retries help
 
 
 def _repair_glossary_misses(
@@ -464,6 +498,108 @@ def _repair_glossary_misses(
                 logger.info(
                     "QC repair: cue %d still missing its rendering; keeping original", i
                 )
+    return accepted
+
+
+def _tighten_overlong(
+    *,
+    project: Any,
+    bible: Bible,
+    doc: SubtitleDoc,
+    source_ref: SubtitleDoc,
+    llm: LLMClient,
+    temperature: float,
+    retry_temps: list[float],
+    max_line_chars: int,
+) -> dict[int, str]:
+    """Re-request a shorter rendering for cues that cannot fit two lines.
+
+    ``rewrap`` only re-breaks text; when a translation is simply too long — over
+    the two-line ``max_line_chars`` budget, or with an unbreakable segment that
+    forces a line past the limit — no wrapping can satisfy the rule, so the model
+    is asked to say it more concisely. Accepted only if the reply validates AND
+    now fits; otherwise the original stands (never truncated). Returns the
+    accepted, already-wrapped replacements.
+    """
+    def fits(body: str) -> bool:
+        lines = subtitle.rendered_lines(subtitle.rewrap(body, max_line_chars))
+        return len(lines) <= 2 and all(
+            subtitle.display_len(ln) <= max_line_chars for ln in lines
+        )
+
+    overlong = [c.index for c in doc.cues if c.body.strip() and not fits(c.body)]
+    if not overlong:
+        return {}
+    logger.info(
+        "tighten: %d cue(s) over the two-line budget: %s", len(overlong), overlong
+    )
+
+    entries = [
+        (e["source"], e["target"])
+        for e in bible.glossary
+        if e.get("source") and e.get("target")
+    ]
+    guide = project.load_guide()
+    budget = max_line_chars * 2
+    accepted: dict[int, str] = {}
+    for i in overlong:
+        src_body = source_ref.cue(i).body
+        src_text = source_ref.cue(i).plaintext
+        gloss_rows = [{"source": t, "target": r} for t, r in entries if t in src_text]
+        prev_ids = [j for j in range(i - 4, i) if j >= 0]
+        look_ids = [j for j in range(i + 1, i + 3) if j < len(source_ref.cues)]
+        values = {
+            "source_language": language_name(project.source_language),
+            "target_language": language_name(project.target_language),
+            "honorific_policy_note": _honorific_note(project),
+            "narration_note": "(none)",
+            "style_note": project.style_guidance(),
+            "guide": guide or "(none)",
+            "series_context": "(none)",
+            "prev_summary": "(mid-episode tighten)",
+            "characters": "(none)",
+            "names": "(none)",
+            "address": "(none)",
+            "glossary": _format_glossary(gloss_rows),
+            "prev_context": _format_prev(
+                [source_ref.cue(j) for j in prev_ids],
+                {j: doc.cue(j).body for j in prev_ids},
+            ),
+            "lookahead": _format_lookahead([source_ref.cue(j) for j in look_ids]),
+            "source_json": json.dumps({str(i): src_body}, ensure_ascii=False, indent=2),
+            "max_line_chars": max_line_chars,
+        }
+        current = doc.cue(i).plaintext.replace("\n", " ")
+        for attempt in range(1, TIGHTEN_ATTEMPTS + 1):
+            temp = (temperature if attempt == 1 or not retry_temps
+                    else retry_temps[min(attempt - 2, len(retry_temps) - 1)])
+            harder = (" The previous rewrite was still too long — cut harder."
+                      if attempt > 1 else "")
+            hint = _retry_hint(
+                f"index {i} is too long to fit two subtitle lines of {max_line_chars} "
+                f"characters (about {budget} total). Your previous translation was: "
+                f"{current!r}. Rewrite it MORE CONCISELY with the same meaning and "
+                f"register — cut filler, not content — and keep any {{...}} tags.{harder}"
+            )
+            prompt = prompts.render("pass2", retry_hint=hint, **values)
+            try:
+                raw = llm.generate_json(prompt, temperature=temp)
+            except LLMError as exc:
+                logger.warning("tighten request failed for cue %d: %s", i, exc)
+                continue
+            mapping, _errors = _validate_chunk(raw, {i: src_body}, project.target_language)
+            value = mapping.get(i)
+            if value is None:
+                continue
+            if fits(value):
+                accepted[i] = subtitle.rewrap(value, max_line_chars)
+                break
+            current = " ".join(subtitle.rendered_lines(value))  # feed it back, try again
+        else:
+            logger.info(
+                "tighten: cue %d still over-long after %d attempt(s); keeping original",
+                i, TIGHTEN_ATTEMPTS,
+            )
     return accepted
 
 
