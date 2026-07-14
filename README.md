@@ -52,7 +52,7 @@ chore.
   original meaning, tone, names, and even deliberate slurs. Tested against a
   third-party sub that had been pivoted through English, dramasub was *more*
   faithful to the Korean on every episode wherever that pivot drifted (see
-  [Measured against a human sub team](#measured-against-a-human-sub-team)).
+  [Models & quality](#models--quality)).
 - **The model never touches timing or structure.** Cues are parsed and
   reassembled programmatically; every write is verified against the source (cue
   count + every timestamp) or aborted — no desync, no dropped lines.
@@ -77,11 +77,13 @@ chore.
 - **Register and culture-specific terms need review.** Job titles, honorifics,
   and slang can come out wrong on the first pass — the bible and glossary exist to
   fix this, but that is human work.
-- **Quality is bounded by the local model.** A 7–35B model won't match a frontier
-  model's fluency; expect occasional mistranslations — more so on the fast model,
-  which also code-switches and hallucinates.
-- **The best model is slow on modest hardware.** ~35B spills off a 12 GB GPU
-  (~12 cues/min); the fast model trades quality for ~5× speed.
+- **Quality is bounded by the local model.** An 8–35B local model won't match a
+  frontier model's fluency; expect occasional mistranslations, code-switching
+  (a stray English/Korean/Chinese word — caught and retried), or a hallucinated
+  detail.
+- **Bigger isn't always better or faster.** The largest model tried (~35B MoE)
+  spills off a 12 GB GPU and runs several times slower without beating the 8B
+  default on this task (see [Models & quality](#models--quality)).
 - **Wordplay and brand slang still need a human.** Puns and in-scene shorthand are
   not reliably reinvented.
 
@@ -90,7 +92,7 @@ chore.
 - Python 3.11+
 - [Ollama](https://ollama.com) running locally, with the model pulled:
   ```bash
-  ollama pull qwen3.6:latest
+  ollama pull gemma4:latest
   ```
 - (Optional) a TMDB API key for online context, via `TMDB_API_KEY`.
 
@@ -105,7 +107,7 @@ python -m dramasub.cli --help
 ## Usage
 
 ```bash
-# 1. Create a project (defaults: source ko, target vi, model qwen3.6:latest)
+# 1. Create a project (defaults: source ko, target vi, model gemma4:latest)
 python -m dramasub.cli init ./my-show --title "My Drama" --tmdb-id 123456
 
 # 2. (Optional) fetch online context into the cache — see "Online context" below
@@ -146,10 +148,11 @@ temperatures used by pass-2 retry attempts — hotter retries help the model
 escape a stubborn wrong output).
 
 dramasub ships a **default K-drama translation guide and base dictionary** for
-Korean→Vietnamese (~100 mined terms: workplace ranks, kinship/address,
-interjections, food, romance vocabulary), used automatically when a project's
-language pair matches. The guide is injected into translation prompts; the
-dictionary sits **under** the show's bible glossary (the bible always wins) and
+Korean→Vietnamese (~140 terms: workplace ranks, kinship/address, harsh
+address/insults, interjections, food, romance, and common drama tropes), used
+automatically when a project's language pair matches. The guide is injected into
+translation prompts; the dictionary sits **under** the show's bible glossary (the
+bible always wins) and
 is filtered per chunk. Control both via `guide:` and `dictionary:` in
 `project.yaml` — `default`, `none`, or a path to your own file, which is how
 other genres or language pairs bring their own. The base dictionary informs the
@@ -229,93 +232,53 @@ What we actually saw:
 (`--direct` is a lightweight one-pass path; the dedicated small-model real-time
 mode remains on the backlog per [AGENTS.md](AGENTS.md).)
 
-## Benchmark
+## Models & quality
 
-Measured on a self-hosted Ollama server translating Korean→Vietnamese with
-`num_ctx=16384` and TMDB context cached:
+The default is **`gemma4:latest`** (8B). In a blind three-judge comparison —
+Korean source as the reference, model identities hidden — it was ranked best of
+the three models tried, with the highest adequacy and fluency and a clear
+majority of per-cue wins, *and* it is the smallest and fastest, fitting entirely
+in a 12 GB GPU.
 
-| Hardware | |
-|---|---|
-| OS | Ubuntu 26.04 x86_64 |
-| CPU | Intel Core i3-12100F (4C/8T) |
-| GPU | NVIDIA GeForce RTX 3060 (12 GB) |
-| RAM | 32 GiB |
+| Model | Size | Fits 12 GB VRAM | Speed | Quality (blind judges) |
+|---|---|---|---|---|
+| `gemma4:latest` (**default**) | 8B | ✓ fully on GPU | fastest | best — top adequacy + fluency |
+| `qwen3.5:latest` | 9.7B | ✓ fully on GPU | fast | decent; some meaning reversals |
+| `qwen3.6:latest` | 35B-A3B MoE | ✗ spills to CPU/RAM | slow | strong meaning, but slower, with occasional wrong register / hallucination |
 
-| Model | Fits 12 GB VRAM | Two-pass | One-pass `--direct` |
-|---|---|---|---|
-| `qwen3.6:latest` (35B-A3B MoE, default) | no — spills to CPU/RAM | ~12 cues/min (~75 min/ep) | ~28 cues/min (~33 min/ep) |
-| `qwen3.5:latest` (fast pick) | yes — fully on GPU | ~58 cues/min (~16 min/ep) | ~107 cues/min (~8 min/ep) |
+Set the model with `init --model <name>` or the `model` key in `project.yaml`.
 
-`qwen3.6:latest` gives the best quality; `qwen3.5:latest` runs ~5× faster
-because it fits entirely in VRAM — a good pick for fast drafts and iteration.
-Set it with `init --model qwen3.5:latest` or the `model` key in `project.yaml`.
+What holds across every test, on any of the models:
 
-Wall-clock with the model already resident (`keep_alive`); the first call also
-pays a one-time load. Full-episode figures (~900 cues) are extrapolated from a
-48-cue timed sample. Two-pass does roughly 2× the model calls of direct.
+- **Direct from Korean beats an English pivot.** Scored against the *Korean* — not
+  the Vietnamese reference, which was itself relayed through English — the local
+  pipeline kept meaning the pivoted reference lost; in one episode the reference
+  even followed a mis-aligned English line unrelated to the Korean.
+- **Adequacy is near a human team; the gap is polish.** Against a third-party
+  **human** sub over 5 episodes, the pipeline's meaning fidelity was near-even
+  (~7.0 vs ~7.8 on a 1–10 scale); the human led mainly on fluency and register —
+  exactly what the directed address table and glossary exist to close with a
+  little curation.
+- **The recurring errors are data-fixable.** A wrong pronoun for a relationship, a
+  mistranslated job title, or a bit of untranslated slang is fixed once in the
+  bible/glossary and inherited by every later cue and episode.
 
-## Quality: fast model vs best model
+Method: judgments are by stronger models on Korean-source samples (the model
+comparison was one episode, blind, three judges; the human-team comparison ran 5
+episodes) — directional, not a leaderboard. Speed figures cited here used an RTX
+3060 (12 GB) / i3-12100F / 32 GiB on Ubuntu, `num_ctx=16384`, TMDB cached.
 
-Both models were run two-pass on **5 real Korean episodes (240 cues total)** and
-scored **against the Korean source** by independent stronger-model judges (one
-per episode) — deliberately *not* against the Vietnamese reference, because that
-reference was a third-party sub pivoted through English and so drifts from the
-Korean itself.
+<details>
+<summary>Historical note — qwen3.5 vs qwen3.6, before gemma4</summary>
 
-| Criterion (vs Korean, 1–10, avg of 5 eps) | `qwen3.5:latest` | `qwen3.6:latest` |
-|---|---|---|
-| Adequacy (meaning fidelity) | 5.8 | **7.7** |
-| Fluency (natural Vietnamese) | 6.2 | **7.2** |
-| Register (pronouns / speech level) | 5.5 | **6.5** |
-
-Head-to-head across 240 cues: **`qwen3.6` wins ~50%, tie ~35%, `qwen3.5` wins
-~15%** — 3.6 is at least as good on ~85% of lines. `qwen3.5` is ~5× faster
-(~55 vs ~12 cues/min): a fast-draft engine, not a finishing one.
-
-Consistent findings across all five episodes:
-
-- **Translating direct from Korean beats an English pivot.** In every episode the
-  local models kept meaning the pivoted reference lost; in one case the reference
-  even followed a *mis-aligned* English line unrelated to the Korean. Going
-  straight from the source avoids compounding a second language's drift.
-- **The recurring errors are data-fixable.** The best model's main weakness is
-  register (archaic/incorrect pronouns for modern characters), and both models
-  systematically mistranslate a job title — exactly what the directed **address
-  table** and **glossary** are for: fix each once, curated by a human, and every
-  later cue and episode inherits it.
-- `qwen3.5` additionally shows meaning reversals, occasional hallucinations, and
-  leftover untranslated English, so it needs heavier post-editing.
-
-Method notes: judged against the Korean by stronger models across 5×48-cue
-samples — directional, not a leaderboard. Lexical-overlap scoring was discarded
-as meaningless against a re-timed, pivoted reference; a reference translation is
-a guide, not ground truth.
-
-## Measured against a human sub team
-
-We also put dramasub's best model (`qwen3.6:latest`) head-to-head against a
-third-party **human** Vietnamese sub for the same 5 episodes — both scored
-against the Korean source. (That human sub had itself been pivoted through
-English, confirmed by cue-count/timing alignment and by lines that follow the
-English even where it diverges from the Korean.)
-
-| vs Korean (avg of 5 eps, 1–10) | Human team | dramasub (`qwen3.6`) |
-|---|---|---|
-| Adequacy (meaning) | 7.8 | 7.0 |
-| Fluency (natural Vietnamese) | 9.0 | 7.0 |
-| Register (pronouns / speech level) | 8.8 | 6.2 |
-
-Head-to-head over 240 cues: **human better on ~33%, tie ~50%, dramasub better
-~18%.** So on about half the lines the local pipeline was indistinguishable from
-the human team — and it was *more* faithful to the Korean wherever the human's
-English pivot drifted, dropped, or inverted meaning. The human's lead is
-concentrated in **fluency and register, not meaning** (adequacy was near-even),
-and register is exactly what the address table exists to fix. This ran with
-fresh, uncurated per-episode bibles; curation would narrow the gap.
-
-Not parity — but a free, offline, local pipeline that ties or beats a human team
-on two-thirds of lines, and is closer to the Korean than an English-pivoted
-professional sub, is a strong result.
+The two Qwen models were compared first, over 5 episodes (240 cues) judged
+against the Korean. `qwen3.6:latest` scored higher (adequacy 7.7 vs 5.8) but ran
+~5× slower because its 35B weights spill off a 12 GB GPU (~12 vs ~58 cues/min,
+two-pass), while `qwen3.5:latest` fit fully in VRAM. `qwen3.5` also showed more
+meaning reversals and leftover untranslated English. Both are kept as options,
+but `gemma4` now supersedes them as the default: faster than qwen3.5 and judged
+higher-quality than qwen3.6.
+</details>
 
 ## Design notes
 
