@@ -1,4 +1,9 @@
 # dramasub default translation guide — K-drama, Korean -> Vietnamese
+# version: 3 — from cross-corpus ko/vi mining: more sentence-ending mappings;
+#             the recurring pivot error where sentence-opening 아니 (surprise)
+#             is mistranslated as the negation "không"; regional dialect
+#             flattens to neutral Vietnamese; rhetorical negatives become
+#             plain assertions.
 # version: 2 — masked/initialed names stay masked (a review found an initial
 #             resolved to a full name, destroying deliberate ambiguity)
 # version: 1 — synthesized from three parallel KO/VI drama corpora (an office
@@ -15,10 +20,15 @@ Pronoun pairs are locked per relationship (the address table always wins):
 - parents and elder siblings self-refer by kinship term (mẹ, bố, chị), not "tôi"
 - narration or commentary speaks in third person; never archaic ngươi/ta in a
   modern drama.
+- never render bare 너/당신 as the neutral "bạn" — always pick the relationship
+  pronoun above (당신 between spouses is "mình"; from a hostile stranger, "ông/bà").
 
 Deference and particles: -요/-습니다 -> final "ạ"; -잖아(요) -> "mà";
--네(요) -> "nhỉ"; -죠 -> "chứ"; vocative -아/야 -> "[Tên] à";
-(이름) 씨 -> anh/cô + given name.
+-네(요) -> "nhỉ"; -죠 -> "chứ"; -거든(요) -> trailing "đấy"; -군요/-구나 ->
+"ra thế"/"nhỉ"; -더라고(요) -> "đấy" (recounting a discovery);
+-(으)ㄹ까(요)? -> "liệu… không?"/"…nhé?"; conjecture -겠죠/-나 봐(요) ->
+"chắc là…"/"có vẻ…"; incredulous echo ~(이)라니 -> repeat the word + "cơ à"/
+"gì chứ"; vocative -아/야 -> "[Tên] à"; (이름) 씨 -> anh/cô + given name.
 
 Job titles: always translate to the Vietnamese title (see glossary), placed
 before the name ("김 선임" -> "Trợ lý Kim"); a bare title works as a vocative or
@@ -31,6 +41,18 @@ never resolve one to a full name.
 Interjections translate by function, never escalated: 야 -> "Này",
 어머 -> "Ôi trời", 아이고 -> "Ôi" (or drop), 여보세요 on the phone -> "Alo",
 짠 -> "Cạn ly". Small fillers may be dropped.
+
+Sentence openers are discourse markers, not literals: 아니 at the start is
+surprise or objection ("Ơ"/"Ủa"), NOT the negation "không"; 자 -> "Nào"/"Đây";
+그러니까 -> "thế mới nói"/"ý là". Soft polite forms -시죠/-(으)ㄹ까요/-(으)ㅂ시다
+are invitations, not commands ("가시죠" -> "Mình đi thôi", not "Đi"). Keep
+stammering and deliberate repetition ("자, 잠깐만요, 잠깐만요" -> "Nào, khoan đã,
+khoan đã") rather than smoothing it into one clause.
+
+Regional dialect (Gyeongsang/Busan, Jeolla, and their endings -노/-나/아이가,
+가시나, 하모…) has no Vietnamese equivalent — render it as neutral standard
+speech, never a Vietnamese regional accent. Flatten rhetorical or double-negative
+questions into a plain positive assertion ("그런 거 아니야?" -> "Đúng là vậy mà.").
 
 Idioms and slang: use the everyday Vietnamese idiom of the same register
 (재수 없다 -> "khó ưa", 연애를 못 하다 -> "ế"); if none exists, say the plain

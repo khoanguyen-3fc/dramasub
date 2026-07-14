@@ -1,4 +1,13 @@
 # dramasub default dictionary — K-drama, Korean -> Vietnamese
+# version: 3 — built by mining parallel ko/vi drama corpora for universal
+#              terms, then PRUNING with the target model itself: an entry is
+#              kept only if the model mistranslates the term unaided — a
+#              scrambled workplace rank, a literal kinship pronoun, a calqued
+#              idiom, a false friend (미팅 = group blind date, not a meeting),
+#              a flattened register/euphemism, or a culture-specific gap.
+#              Everyday vocabulary the model already handles was dropped,
+#              leaving a small high-signal set. Show-specific names, places,
+#              and product coinages were excluded; examples use placeholders.
 # version: 2 — expanded with universal, show-agnostic K-drama vocabulary:
 #              harsh address/insults (a model rendered 이놈아 as the flat
 #              "đồ này" instead of a natural "thằng ranh này"), high-frequency
@@ -11,33 +20,39 @@
 #              artifacts excluded. Merged UNDER each project's bible glossary
 #              (the bible wins per term) and filtered per chunk; guides
 #              generation but is NOT enforced by QC.
-version: 2
+version: 3
 terms:
   # --- workplace titles / ranks ---
-  - source: 사원
-    target: nhân viên
-    note: entry-level staff; "홍길동 사원" -> "Nhân viên Hong Gil-dong"
   - source: 선임
     target: trợ lý
     note: junior professional rank; title-first ("김 선임" -> "Trợ lý Kim")
-  - source: 대리
-    target: trợ lý
-    note: assistant manager, similar level to 선임; never "đại lý" (dealership)
   - source: 과장
     target: quản lý
     note: section chief
   - source: 책임
     target: chủ nhiệm
     note: senior/principal rank; "김 책임님" -> "Chủ nhiệm Kim"; never "Bộ trưởng"
+  - source: 실장
+    target: trưởng phòng
+    note: office/division chief; if 부장 also appears, pick a distinct rank to keep them apart
+  - source: 사장
+    target: giám đốc
+    note: company president; "사장님" as address -> "Giám đốc"
+  # rank ladder re-added: ranks disambiguate each other, so even ranks the model
+  # translates correctly in isolation are kept as context — without the neighbours
+  # it scrambles an ambiguous one (e.g. 책임 came out as "Trưởng phòng")
+  - source: 사원
+    target: nhân viên
+    note: entry-level staff; "홍길동 사원" -> "Nhân viên Hong Gil-dong"
+  - source: 대리
+    target: trợ lý
+    note: assistant manager, near 선임's level; never "đại lý" (dealership)
   - source: 팀장
     target: trưởng nhóm
     note: team leader (office); a police squad leader is "đội trưởng"
   - source: 부장
     target: trưởng phòng
     note: department head; never "Bộ trưởng" (government minister)
-  - source: 실장
-    target: trưởng phòng
-    note: office/division chief; if 부장 also appears, pick a distinct rank to keep them apart
   - source: 임원
     target: lãnh đạo
     note: executives; "임원 회의" -> "họp lãnh đạo"
@@ -47,33 +62,15 @@ terms:
   - source: 대표
     target: giám đốc
     note: CEO/company head; usable as vocative and "you"
-  - source: 사장
-    target: giám đốc
-    note: company president; "사장님" as address -> "Giám đốc"
   - source: 회장
     target: chủ tịch
     note: chairman (conglomerate); gender marker when addressing ("bà Chủ tịch")
   - source: 지사장
     target: giám đốc chi nhánh
     note: branch director
-  - source: 계약직
-    target: nhân viên hợp đồng
-    note: contract (non-regular) employee
-  - source: 후계자
-    target: người thừa kế
-    note: heir (chaebol family)
-  - source: 동료
-    target: đồng nghiệp
-    note: colleague
   - source: 고객님
     target: quý khách
     note: honorific customer address in service scenes
-  - source: 선배
-    target: tiền bối
-    note: senior colleague/schoolmate; "길동 선배" -> "Tiền bối Gil-dong"
-  - source: 후배
-    target: hậu bối
-    note: junior colleague/schoolmate
   # --- kinship / address ---
   - source: 오빠
     target: anh
@@ -87,122 +84,20 @@ terms:
   - source: 형
     target: anh
     note: man to older man; deferential 형님 -> "anh" + "ạ"
-  - source: 아저씨
-    target: chú
-    note: middle-aged man; distancing tone may use "ông"
-  - source: 아줌마
-    target: cô
-    note: middle-aged woman; distancing tone may use "bà"
-  - source: 어르신
-    target: ông/bà
-    note: elder, respectful
-  - source: 할아버지
-    target: ông nội
-    note: family vocative "grandpa"; a generic old man is "ông cụ/ông lão"
-  - source: 할머니
-    target: bà nội
-    note: family vocative "grandma"; generic old woman "bà cụ"
-  - source: 엄마
-    target: mẹ
-    note: mom; mothers self-refer as "mẹ"
-  - source: 아빠
-    target: bố
-    note: dad
-  - source: 동생
-    target: em
-    note: younger sibling; "em gái"/"em trai" when gender matters
   - source: 자네
     target: con
     note: elder to junior family member; family pronoun in VI
   # --- interjections / discourse ---
-  - source: 야
-    target: Này
-    note: attention-getter between equals/juniors; NOT an insult
-  - source: 어머
-    target: Ôi trời
-    note: startled (often feminine) exclamation
-  - source: 아이고
-    target: Ôi
-    note: sigh/exclamation; may drop entirely
-  - source: 진짜
-    target: thật là
-    note: exasperation; as intensifier "thật (đấy)"
   - source: 아이씨
     target: khỉ thật
     note: mild curse, softened; stronger 씨 -> "chết tiệt"
-  - source: 네
-    target: vâng
-    note: polite yes; startled "네?" -> "Dạ?"
-  - source: 응
-    target: ừ
-    note: informal yes between intimates
-  - source: 뭐?
-    target: Sao cơ?
-    note: incredulous "what?" pushback
-  - source: 저기요
-    target: cho hỏi
-    note: hailing a stranger/staff; also "này anh/chị"
-  - source: 잠깐만
-    target: đợi đã
-    note: urgent "wait!"; polite 잠시만요 -> "Đợi chút ạ"
-  - source: 글쎄요
-    target: ai mà biết được
-    note: hedging "well, who knows"
-  - source: 설마
-    target: lẽ nào
-    note: incredulity, "don't tell me..."
-  - source: 혹시
-    target: có khi nào
-    note: hedged question opener; polite ask -> "cho hỏi"
-  - source: 어떡해
-    target: làm sao bây giờ
-    note: distressed "what do I do"; short panic "Sao giờ?"
-  - source: 깜짝이야
-    target: hết hồn
-    note: startled exclamation
-  - source: 여보세요
-    target: Alo
-    note: phone greeting only
   - source: 짠
     target: cạn ly
     note: drinking toast
-  - source: 건배
-    target: cụng ly
-    note: toast as verb phrase
-  - source: 쉿
-    target: suỵt
-    note: shushing
   - source: 수고했어
     target: làm tốt lắm
     note: superior's "good work" to a subordinate
-  - source: 죄송합니다
-    target: xin lỗi
-    note: formal apology; add addressee pronoun/"ạ" for deference
-  - source: 감사합니다
-    target: cảm ơn
-    note: formal thanks; "ạ" carries deference
-  - source: 안녕하세요
-    target: xin chào
-    note: standard greeting
   # --- food / culture ---
-  - source: 소주
-    target: soju
-    note: kept as loanword
-  - source: 맥주
-    target: bia
-    note: beer
-  - source: 치맥
-    target: gà rán và bia
-    note: chicken-and-beer combo; "chimaek" if kept as loanword
-  - source: 회식
-    target: tiệc công ty
-    note: company dinner/drinks
-  - source: 삼겹살
-    target: thịt ba chỉ
-    note: pork belly BBQ
-  - source: 고깃집
-    target: quán thịt nướng
-    note: Korean BBQ restaurant
   - source: 떡
     target: bánh tteok
     note: rice cake; Korean name + classifier
@@ -212,129 +107,17 @@ terms:
   - source: 2차
     target: tăng hai
     note: second drinking round
-  - source: 과음
-    target: uống quá chén
-    note: overdrinking
-  - source: 아이스아메리카노
-    target: Americano đá
-    note: iced Americano; 뜨아 -> "Americano nóng"
-  - source: 단톡
-    target: nhóm chat
-    note: group chat (KakaoTalk)
-  - source: 생수
-    target: nước suối
-    note: bottled water, VN convention
   # --- romance / drama ---
   - source: 맞선
     target: xem mắt
     note: arranged matchmaking date; NOT generic "hẹn hò" (dating)
-  - source: 사귀다
-    target: hẹn hò
-    note: to date
-  - source: 첫사랑
-    target: tình đầu
-    note: first love
-  - source: 짝사랑
-    target: yêu đơn phương
-    note: one-sided love
-  - source: 헤어지다
-    target: chia tay
-    note: to break up
-  - source: 바람피우다
-    target: ngoại tình
-    note: to cheat / have an affair
   - source: 양다리
     target: bắt cá hai tay
     note: two-timing while dating; "ngoại tình" when marital
-  - source: 잠수 타다
-    target: lặn mất tăm
-    note: ghosting / disappearing on someone
-  - source: 설레다
-    target: rung động
-    note: heart-flutter
-  - source: 결혼
-    target: kết hôn
-    note: marriage; casual verb use "cưới (nhau)"
-  - source: 유부녀
-    target: phụ nữ đã có chồng
-    note: married woman
-  - source: 배신하다
-    target: phản bội
-    note: betray
-  - source: 결혼 정보 회사
-    target: công ty mai mối
-    note: matchmaking agency
-  # --- workplace vocabulary ---
-  - source: 출근
-    target: đi làm
-    note: going to work
-  - source: 퇴근
-    target: tan làm
-    note: leaving work; "먼저 퇴근하겠습니다" -> "xin phép về trước"
-  - source: 칼퇴
-    target: tan làm đúng giờ
-    note: leaving exactly on time
-  - source: 야근
-    target: tăng ca
-    note: overtime / working late
-  - source: 회의
-    target: cuộc họp
-    note: meeting
-  - source: 보고서
-    target: báo cáo
-    note: report
-  - source: 결재
-    target: phê duyệt
-    note: managerial sign-off/approval
-  - source: 출장
-    target: đi công tác
-    note: business trip
-  - source: 휴가
-    target: nghỉ phép
-    note: leave/vacation
-  - source: 월급
-    target: tiền lương
-    note: salary
-  - source: 실적
-    target: thành tích
-    note: work results/performance
-  - source: 거래처
-    target: đối tác
-    note: client firm/business partner
-  - source: 그만두다
-    target: nghỉ việc
-    note: quit one's job
-  - source: 발령
-    target: điều chuyển
-    note: posting/transfer assignment
-  - source: 업무
-    target: công việc
-    note: work/tasks
-  - source: 프로젝트
-    target: dự án
-    note: project
-  - source: 신제품 발표회
-    target: lễ ra mắt sản phẩm mới
-    note: product launch event
   # --- general drama vocabulary ---
-  - source: 명품
-    target: hàng hiệu
-    note: luxury goods
   - source: 진상
     target: khách rắc rối
     note: nightmare/entitled customer
-  - source: 위암
-    target: ung thư dạ dày
-    note: stomach cancer (recurring drama illness)
-  - source: 대출
-    target: khoản vay
-    note: loan
-  - source: 부동산
-    target: bất động sản
-    note: real estate
-  - source: 신분증
-    target: thẻ căn cước
-    note: ID card, VN-localized
   # --- harsh address / insults (translate by force, never literal "đồ này") ---
   - source: 이놈아
     target: thằng ranh này
@@ -342,18 +125,6 @@ terms:
   - source: 이놈
     target: thằng này
     note: an irritated "this guy"; stronger is 이 자식
-  - source: 자식
-    target: thằng nhóc
-    note: kid/guy; affectionate with 이/우리, an insult by tone; not literally con cái
-  - source: 새끼
-    target: thằng khốn
-    note: strong insult; soften to "thằng nhóc" only when clearly affectionate
-  - source: 미친놈
-    target: thằng điên
-    note: crazy bastard; female target con điên
-  - source: 바보
-    target: đồ ngốc
-    note: mild "idiot/fool", often teasing
   # --- spousal / lover address ---
   - source: 여보
     target: mình ơi
@@ -361,91 +132,153 @@ terms:
   - source: 자기야
     target: cưng à
     note: lovers' pet name; also "em yêu"/"anh yêu"
-  - source: 당신
-    target: anh
-    note: spousal "mình/anh/em"; confrontational to a stranger "ông/bà"; never literal "bạn"
   # --- interjections / discourse (expanded) ---
-  - source: 대박
-    target: đỉnh thật
-    note: amazement "awesome"; for shock "khủng khiếp"
-  - source: 헐
-    target: trời đất
-    note: disbelief "whoa/what"
-  - source: 화이팅
-    target: cố lên
-    note: encouragement "fighting!"; also 파이팅
-  - source: 그러게
-    target: thì đấy
-    note: rueful agreement "right?/tell me about it"
-  - source: 어차피
-    target: dù sao thì
-    note: anyway / in any case
-  - source: 그나저나
-    target: mà này
-    note: topic shift "anyway/by the way"
-  - source: 됐어
-    target: thôi đủ rồi
-    note: enough / forget it; dismissive bỏ đi
-  - source: 어쩐지
-    target: thảo nào
-    note: no wonder ("that explains it")
   - source: 눈치
     target: sự tinh ý
     note: reading the room; 눈치 보다 "dò xét thái độ", 눈치 없다 "vô ý"
-  - source: 축하해
-    target: chúc mừng
-    note: congratulations; formal 축하합니다 adds "ạ"
-  - source: 사랑해
-    target: yêu em
-    note: I love you; pick pronoun by speaker (anh yêu em / em yêu anh)
-  - source: 보고 싶어
-    target: nhớ em
-    note: I miss you; pick pronoun by relationship
-  # --- drama tropes (expanded) ---
-  - source: 재벌
-    target: tài phiệt
-    note: chaebol / conglomerate family
-  - source: 상견례
-    target: lễ ra mắt hai họ
-    note: formal first meeting of both families before a marriage
-  - source: 인연
-    target: nhân duyên
-    note: fated connection between people
-  - source: 운명
-    target: định mệnh
-    note: destiny/fate
-  - source: 오해
-    target: hiểu lầm
-    note: misunderstanding
-  - source: 복수
-    target: trả thù
-    note: revenge; also "báo thù"
-  # --- workplace (expanded) ---
-  - source: 승진
-    target: thăng chức
-    note: promotion
-  - source: 해고
-    target: sa thải
-    note: to fire/lay off
-  - source: 사표
-    target: đơn xin nghỉ việc
-    note: resignation letter; 사표 내다 "nộp đơn nghỉ việc"
-  - source: 갑질
-    target: thói hống hách
-    note: a superior abusing power over subordinates; "chèn ép cấp dưới"
-  # --- food / everyday culture (expanded) ---
-  - source: 라면
-    target: mì gói
-    note: instant noodles; a noodle-shop bowl is just "mì"
-  - source: 김밥
-    target: cơm cuộn
-    note: gimbap; loanword "kimbap" also fine
-  - source: 편의점
-    target: cửa hàng tiện lợi
-    note: convenience store
-  - source: 해장국
-    target: canh giải rượu
-    note: hangover soup
-  - source: 포장마차
-    target: quán nhậu vỉa hè
-    note: street food-and-drink tent (pojangmacha)
+  # --- discourse markers / interjections (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 아니
+    target: Ơ / Ủa
+    note: sentence-opening SURPRISE/objection, NOT the negation 'không' — a classic pivot error
+  # --- reactions / etiquette (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 들어가세요
+    target: về nhé / về cẩn thận
+    note: farewell to someone heading home
+  # --- romance (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 사내 연애
+    target: tình công sở
+    note: workplace romance — a whole genre premise
+  - source: 착각
+    target: tưởng bở / ngộ nhận
+    note: self-delusion / misreading (착각하다); distinct from 오해 (mutual misunderstanding)
+  - source: 오늘부터 1일
+    target: chính thức yêu nhau từ hôm nay
+    note: "iconic line: day one of a relationship; render idiomatically"
+  # --- marriage / family (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 편들다
+    target: bênh / bênh vực
+    note: to take someone's side
+  # --- workplace (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 기획
+    target: kế hoạch / hoạch định
+    note: planning / a planned project (기획하다); models tend to leave it untranslated
+  - source: 워크숍
+    target: workshop (chuyến team-building)
+    note: corporate team-building trip, NOT an academic workshop
+  - source: 계산하다
+    target: tính tiền / thanh toán
+    note: to pay the bill; not 결재 (managerial sign-off)
+  - source: 미팅
+    target: buổi xem mắt nhóm / hẹn hò nhóm
+    note: usually a GROUP blind date; but a work 미팅 is a business meeting (= 회의, "cuộc họp") — judge by context
+  # --- idioms / set phrases (v3: mined from 6-episode ko/vi corpus) ---
+  - source: 두 마리 토끼
+    target: được cả hai / bắt cả hai con thỏ
+    note: chasing two goals at once (두 마리 토끼를 잡다/놓치다)
+  - source: 숟가락 얹다
+    target: ăn ké / hớt công
+    note: freeload on / take credit for others' work
+  - source: 눈도장 찍다
+    target: ghi điểm / tạo ấn tượng
+    note: get noticed by a superior, leave a good impression
+  - source: 두고 보다
+    target: để rồi xem / cứ chờ xem
+    note: "'wait and see', as warning or suspense"
+  - source: 라인 타다
+    target: theo phe / theo cánh
+    note: "office politics: align with a patron's faction (라인 also = product line)"
+  - source: 당하다
+    target: bị hại / bị chơi khăm
+    note: to get done over / be on the receiving end of a scheme
+  # --- crime / legal / investigation (v3, cross-show) ---
+  - source: 신고하다
+    target: báo (cảnh sát) / trình báo
+    note: report to authorities; 실종 신고 = report someone missing
+  - source: 협박하다
+    target: đe dọa / tống tiền
+    note: to threaten/blackmail (noun 협박)
+  - source: 사주하다
+    target: chủ mưu / xúi giục
+    note: to instigate / mastermind a crime; 사주한 사람 = the instigator
+  - source: 처리하다
+    target: xử lý; thủ tiêu
+    note: to handle/clean up; in a crime context = eliminate a person (euphemism)
+  - source: 각오하다
+    target: liệu hồn / chuẩn bị tinh thần
+    note: brace yourself; imperative 각오해 = 'you'll pay for this'
+  # --- money / finance (v3, cross-show) ---
+  - source: 빼돌리다
+    target: biển thủ / tuồn ra
+    note: to siphon off / embezzle / divert secretly
+  - source: 사채
+    target: vay nặng lãi / tín dụng đen
+    note: private / loan-shark debt; distinct from 대출 (bank loan)
+  - source: 전세
+    target: tiền thuê nhà đặt cọc (jeonse)
+    note: Korean lump-sum lease-deposit system; 전세 사기 = jeonse-deposit fraud
+  - source: 위자료
+    target: tiền cấp dưỡng ly hôn
+    note: divorce alimony / consolation money
+  - source: 빽
+    target: chỗ dựa / thế lực chống lưng
+    note: backing / connections / a patron (slang, from English 'back')
+  - source: 물려받다
+    target: thừa kế / kế thừa
+    note: to inherit a company/wealth/position; noun form is 후계자 (heir)
+  # --- medical / illness (v3, cross-show) ---
+  - source: 보호자
+    target: người nhà / người giám hộ
+    note: a patient's guardian / next-of-kin who signs and pays
+  # --- family / marriage / kinship (v3, cross-show) ---
+  - source: 집안
+    target: gia thế / dòng dõi
+    note: the household as social standing/lineage, not just 'house'
+  - source: 모시다
+    target: phụng dưỡng / hầu hạ
+    note: honorific 'serve/attend to' elders; 제사를 모시다 = hold ancestral rites
+  - source: 예물
+    target: sính lễ
+    note: betrothal/wedding gifts exchanged between families
+  - source: 마누라
+    target: bà xã
+    note: colloquial/blunt 'the wife', used by husbands, mildly dismissive
+  - source: 동창회
+    target: buổi họp lớp
+    note: a school/class reunion (동창 = former classmate); a classic confrontation setting
+  # --- revenge / betrayal / confrontation (v3, cross-show) ---
+  - source: 갈아타다
+    target: đổi sang (cái tốt hơn)
+    note: to trade up (partners/options); literally transfer transport
+  - source: 독기
+    target: sự nhẫn tâm / máu lạnh
+    note: venomous ruthlessness; 독하다 = ruthless/tenacious
+  - source: 만만하다
+    target: dễ bắt nạt / dễ xơi
+    note: to be a pushover; 만만치 않다 = formidable, not to be underestimated
+  - source: 넘어가다
+    target: cho qua / bỏ qua
+    note: to let something slide; 안 넘어가 = won't let it go
+  # --- morality / fate / idioms (v3, cross-show) ---
+  - source: 콩밥 먹다
+    target: đi tù / bóc lịch
+    note: to do time in prison (slang; not literal 'eat bean rice')
+  - source: 기가 차다
+    target: cạn lời / hết chỗ nói
+    note: dumbfounded/appalled at something absurd; near 어이가 없다
+  - source: 구워삶다
+    target: dụ dỗ / thuyết phục khéo
+    note: to cajole / win someone over (literally roast-and-boil)
+  # --- emotion / everyday (v3, cross-show) ---
+  - source: 씹다
+    target: ngó lơ / phớt lờ (tin nhắn)
+    note: "slang: to ignore someone's words/messages"
+  - source: 찐따
+    target: kẻ lập dị / kẻ thất bại
+    note: a loser / socially awkward outcast (derogatory slang)
+  - source: 지랄
+    target: giở trò / làm loạn (thô tục)
+    note: vulgar 'bullshit / raising hell' (지랄하다)
+  # --- discourse markers (v3, cross-show) ---
+  - source: 하필
+    target: sao lại nhằm
+    note: "'of all times/things', usually resentful"
