@@ -20,7 +20,7 @@ from dramasub.core import prompts
 from dramasub.core._yaml import write_yaml
 from dramasub.core.bible import Bible
 from dramasub.core.lang import language_name
-from dramasub.core.llm import LLMClient
+from dramasub.core.llm import LLMClient, LLMError
 from dramasub.core.subtitle import SubtitleDoc
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # Cues per pass-1 LLM call. Small enough that the dialogue plus bible/series
 # context stays well inside a 16k context window.
 SEGMENT_CUES = 150
+# A segment whose JSON answer overflows num_ctx comes back truncated (and thus
+# unparseable). Retry it with a wider context window before giving up — a
+# transient truncation must not abort the whole episode's pass 1.
+PASS1_ATTEMPTS = 3
 
 _HONORIFIC_NOTES = {
     "translate": (
@@ -110,7 +114,24 @@ def extract_context(
             dialogue=dialogue,
         )
         logger.info("pass 1: analyzing segment %s", label)
-        raw = llm.generate_json(prompt, temperature=temperature)
+        raw = None
+        for attempt in range(1, PASS1_ATTEMPTS + 1):
+            # A parse failure here means the JSON was truncated for lack of room,
+            # so widen the context window on retry rather than just re-sampling.
+            ctx = project.num_ctx if attempt == 1 else project.num_ctx * 2
+            try:
+                raw = llm.generate_json(prompt, temperature=temperature, num_ctx=ctx)
+                break
+            except LLMError as exc:
+                logger.warning(
+                    "pass 1: segment %s attempt %d/%d failed (%s); retrying with a "
+                    "wider context window", label, attempt, PASS1_ATTEMPTS, exc,
+                )
+        if raw is None:
+            raise LLMError(
+                f"pass 1: segment {label} still unparseable after {PASS1_ATTEMPTS} "
+                "attempts (model JSON kept truncating; raise num_ctx in project.yaml)"
+            )
         normalized = _normalize_context(raw, episode)
         _merge_into(merged, normalized)
 
