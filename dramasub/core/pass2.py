@@ -331,7 +331,7 @@ def _translate_chunk(
         hint = _retry_hint(_describe(errors) if errors else "reply unusable")
 
     failed = sorted(i for i in source_map if i not in salvaged)
-    if failed and len(failed) < len(source_map):
+    if failed:
         # Rescue pass: re-request ONLY the cues that never validated, with the
         # chunk's salvaged translations as context. The smaller framing often
         # escapes a leak the full-chunk regeneration kept re-triggering, and
@@ -490,11 +490,13 @@ def _rescue_failed(
     temperature: float,
     retry_temps: list[float],
 ) -> None:
-    """Re-request only the never-validated cues, banking recoveries in place.
+    """Re-request the never-validated cues, banking recoveries in place.
 
-    The chunk's already-salvaged cues are shown as translated context so the
-    rescued lines stay consistent with their neighbors. Skipped entirely when
-    the whole chunk failed structurally (rescue would just repeat it).
+    First re-requests all failed cues together (already-salvaged cues shown as
+    translated context so recoveries stay consistent with their neighbors),
+    then falls back to translating any still-missing cue on its own — a
+    single-index request cannot drop its own index — so no line is left
+    untranslated.
     """
     rescue_map = {i: source_map[i] for i in source_map if i not in salvaged}
     logger.info(
@@ -538,6 +540,37 @@ def _rescue_failed(
             )
         hint = _retry_hint(_describe(errors) if errors else "reply unusable")
 
+    # Last-resort single-cue pass: a one-index request cannot drop its own
+    # index, so each cue still missing is translated on its own. Guarantees no
+    # line is left untranslated, at the cost of one call per stubborn cue.
+    for i in [j for j in rescue_map if j not in salvaged]:
+        vals = dict(base_values)
+        vals["source_json"] = json.dumps(
+            {str(i): source_map[i]}, ensure_ascii=False, indent=2
+        )
+        vals["prev_context"] = _format_prev(context_cues, {**translations, **salvaged})
+        prompt = prompts.render(
+            "pass2",
+            retry_hint=_retry_hint("translate ONLY this one line; keep its index"),
+            **vals,
+        )
+        try:
+            raw = llm.generate_json(prompt, temperature=temperature)
+        except LLMError as exc:
+            logger.warning("chunk %d single-cue rescue of %d failed: %s", chunk.number, i, exc)
+            continue
+        mapping, _errors = _validate_chunk(raw, {i: source_map[i]}, project.target_language)
+        if i in mapping:
+            salvaged.setdefault(i, mapping[i])
+    still = [i for i in rescue_map if i not in salvaged]
+    if not still:
+        logger.info("chunk %d: all cue(s) recovered", chunk.number)
+    else:
+        logger.warning(
+            "chunk %d: %d cue(s) unrecovered after single-cue pass: %s",
+            chunk.number, len(still), still,
+        )
+
 
 def _validate_chunk(
     raw: Any, source_map: dict[int, str], target_language: str
@@ -554,22 +587,16 @@ def _validate_chunk(
         return {}, {None: "reply must be a JSON object mapping each index to a translation"}
 
     got = {str(k).strip(): v for k, v in raw.items()}
-    expected = {str(i) for i in source_map}
-    missing = expected - got.keys()
-    extra = got.keys() - expected
-    if missing or extra:
-        parts = []
-        if missing:
-            parts.append(f"missing indices {sorted(missing)}")
-        if extra:
-            parts.append(f"unexpected indices {sorted(extra)}")
-        return {}, {
-            None: "the reply's indices must match the input exactly: " + "; ".join(parts)
-        }
-
+    # A missing or extra index is NOT fatal: bank every expected cue that is
+    # present and valid, flag each missing one per-index (so retries and the
+    # rescue pass target only it), and ignore any unexpected extras. A single
+    # dropped index must never discard the whole reply's good translations.
     mapping: dict[int, str] = {}
     errors: dict[int | None, str] = {}
     for index, body in source_map.items():
+        if str(index) not in got:
+            errors[index] = f"index {index} is missing from the reply; include it"
+            continue
         value = got[str(index)]
         if not isinstance(value, str) or not value.strip():
             errors[index] = f"index {index} has an empty or non-string value"
