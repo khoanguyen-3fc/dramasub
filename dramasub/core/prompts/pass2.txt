@@ -1,4 +1,9 @@
 # pass2 — chunk translation
+# version: 5 — encode three judged pronoun failure modes: commit to a single
+#             address term (no "anh/cô" hedges), a speaker's self-term follows
+#             their own standing (a senior stays "tôi", not "em"/"tớ"), and a
+#             rank-title renders as the title/name, not a bare (mis-genderable)
+#             pronoun
 # version: 4 — revised from live-episode benchmarking: rules condensed to
 #             ~half the tokens and rewritten around judged failure modes
 #             (person/negation flips, titles-by-cognate, interjections,
@@ -59,8 +64,16 @@ ${source_json}
   question-vs-statement. A character who calls themself by name keeps that.
 - Pronouns and speech level follow the address table; for uncovered pairs infer
   from age, rank, gender, intimacy — modern register only unless the drama is
-  historical.
+  historical. Each character above is tagged [nam] (male) or [nữ] (female): never
+  use a female pronoun (cô/chị/bà) for a [nam] character, nor a male one (anh/ông)
+  for a [nữ]. Commit to ONE term per line — never hedge with a slashed pair
+  ("anh/cô", "em/tôi"); if unsure, choose what the gender tags and address table
+  support. A speaker's self-term follows their OWN standing, not the listener's:
+  a senior speaking to a junior stays "tôi" (or their title), never "em"/"tớ" —
+  but a junior speaking up to a senior still uses the deferential "em".
 - Job titles and ranks by workplace meaning, never by a similar-sounding word.
+  When someone is addressed or named by rank (책임님, 선임님, 사장님), use their
+  target-language title or name, not a bare pronoun that could mis-state gender.
 - Interjections by function (a call stays a call), never escalated.
 - Idioms and slang: the common ${target_language} equivalent, or plain wording
   any viewer understands. Write ${target_language} only — never another

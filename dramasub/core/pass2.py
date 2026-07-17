@@ -845,6 +845,9 @@ def _format_characters(chars: list[dict[str, Any]]) -> str:
     out = []
     for char in chars:
         line = f"- {char.get('name', '?')}"
+        gender = (char.get("gender") or "").lower()
+        if gender in ("male", "female"):
+            line += f" [{'nam' if gender == 'male' else 'nữ'}]"
         if char.get("role"):
             line += f" — {char['role']}"
         if char.get("aliases"):
