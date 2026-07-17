@@ -18,6 +18,9 @@ Checks:
 * **foreign** — an output cue contains characters from a script the target
   language doesn't use (e.g. a Chinese idiom leaking into Vietnamese — a known
   habit of Chinese-trained models under idiomatic pressure).
+* **gender** — a pronoun problem: an output cue that hedges with a slashed
+  address pair (``anh/cô``) instead of committing to one, or a bible address
+  row whose gendered term contradicts the known gender of that character.
 """
 
 from __future__ import annotations
@@ -46,10 +49,26 @@ _NATIVE_SCRIPTS = {
     "ko": {"Korean", "Chinese"},
 }
 
+# Vietnamese relational address terms that carry a fixed gender, used by the
+# gender check. Neutral terms (tôi, em, tớ, cậu, con, mình, cháu, bác) are
+# deliberately excluded — they contradict no gender.
+_MALE_TERMS = {"anh", "ông", "chú"}
+_FEMALE_TERMS = {"cô", "chị", "bà", "dì"}
+# Every relational pronoun, for spotting an unresolved "anh/cô"-style hedge in
+# output: a subtitle must commit to one term, so a slashed pronoun pair is
+# always an error (longest-first so the alternation is greedy).
+_PRONOUNS = _MALE_TERMS | _FEMALE_TERMS | {
+    "em", "tôi", "tớ", "cậu", "con", "mình", "cháu", "bác",
+}
+_PRON_ALT = "|".join(sorted(_PRONOUNS, key=len, reverse=True))
+_HEDGE_RE = re.compile(
+    rf"\b(?:{_PRON_ALT})\s*/\s*(?:{_PRON_ALT})\b", re.IGNORECASE
+)
+
 
 @dataclass
 class QCWarning:
-    kind: str  # "untranslated" | "empty" | "length" | "glossary" | "foreign"
+    kind: str  # untranslated | empty | length | glossary | foreign | gender
     detail: str
     index: int | None = None
 
@@ -87,6 +106,7 @@ def run_qc(
     warnings += check_length(output, max_line_chars)
     warnings += check_glossary(bible, source, output)
     warnings += check_foreign_script(source, output, target_language)
+    warnings += check_gender_consistency(bible, output)
     warnings.sort(key=lambda w: (w.index if w.index is not None else -1, w.kind))
     logger.info("QC produced %d warning(s)", len(warnings))
     return warnings
@@ -162,6 +182,64 @@ def check_length(output: SubtitleDoc, max_line_chars: int) -> list[QCWarning]:
                     )
                 )
     return warnings
+
+
+def check_gender_consistency(bible: Bible, output: SubtitleDoc) -> list[QCWarning]:
+    """Flag pronoun-gender problems.
+
+    Two independent checks:
+
+    * **output hedges** — a cue that leaves the pronoun unresolved as a slashed
+      pair (``anh/cô``, ``em/tôi``). Subtitles must commit to one term; a
+      slashed pair is always an error, whichever side is right.
+    * **address-table contradictions** — a bible address row whose gendered
+      ``self``/``other`` term (e.g. ``anh``) disagrees with the known gender of
+      the character it applies to. These rows feed pass 2, so a bad one
+      propagates; surfacing it lets the user fix the source.
+    """
+    warnings: list[QCWarning] = []
+    for cue in output.cues:
+        if not cue.body.strip():
+            continue
+        hedge = _HEDGE_RE.search(cue.plaintext)
+        if hedge:
+            warnings.append(
+                QCWarning(
+                    "gender",
+                    f"unresolved pronoun hedge {hedge.group(0)!r}; commit to one",
+                    cue.index,
+                )
+            )
+    for row in bible.address:
+        for field, who in (("other", row.get("to")), ("self", row.get("from"))):
+            term = (row.get(field) or "").strip().lower()
+            gender = _gender_of(bible, who)
+            if not gender or (term not in _MALE_TERMS and term not in _FEMALE_TERMS):
+                continue
+            term_gender = "male" if term in _MALE_TERMS else "female"
+            if term_gender != gender:
+                warnings.append(
+                    QCWarning(
+                        "gender",
+                        f"address {row.get('from')!r}->{row.get('to')!r}: "
+                        f"{field}={row.get(field)!r} is {term_gender} but "
+                        f"{who!r} is {gender}",
+                    )
+                )
+    return warnings
+
+
+def _gender_of(bible: Bible, name: str | None) -> str | None:
+    """The recorded gender of the character named/aliased *name*, or ``None``."""
+    if not name:
+        return None
+    for char in bible.characters:
+        names = {char.get("name")} | set(char.get("aliases") or [])
+        if name in names:
+            gender = (char.get("gender") or "").strip().lower()
+            if gender in ("male", "female"):
+                return gender
+    return None
 
 
 def check_glossary(
