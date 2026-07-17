@@ -116,6 +116,7 @@ class Bible:
         *,
         target: str | None = None,
         role: str | None = None,
+        gender: str | None = None,
         aliases: list[str] | None = None,
         note: str | None = None,
     ) -> str | None:
@@ -134,6 +135,8 @@ class Bible:
                 entry["target"] = target
             if role:
                 entry["role"] = role
+            if gender:
+                entry["gender"] = gender
             if aliases:
                 entry["aliases"] = list(aliases)
             if note:
@@ -142,7 +145,8 @@ class Bible:
             rendered = f" = {target!r}" if target else ""
             return f"added character {name!r}{rendered}"
         return _fill_missing(
-            existing, target=target, role=role, aliases=aliases, note=note, label=name
+            existing, target=target, role=role, gender=gender,
+            aliases=aliases, note=note, label=name
         )
 
     def add_or_update_relationship(
@@ -237,10 +241,12 @@ class Bible:
         notes: list[str] = []
 
         for char in updates.get("characters", []) or []:
+            _g = (char.get("gender") or "").strip().lower()
             note = self.add_or_update_character(
                 char.get("name", ""),
                 target=char.get("target"),
                 role=char.get("role"),
+                gender=_g if _g in ("male", "female") else None,
                 aliases=char.get("aliases"),
                 note=char.get("note"),
             )

@@ -49,7 +49,7 @@ Return a SINGLE JSON object (no prose, no markdown) with exactly these keys:
   ],
   "proposed_updates": {
     "characters": [
-      {"name": "canonical name (prefer ${source_language} script)", "target": "the single fixed ${target_language} rendering of the name to use everywhere", "role": "short role/description", "aliases": ["..."], "note": "..."}
+      {"name": "canonical name (prefer ${source_language} script)", "target": "the single fixed ${target_language} rendering of the name to use everywhere", "role": "short role/description", "gender": "male|female|unknown", "aliases": ["..."], "note": "..."}
     ],
     "relationships": [
       {"from": "...", "to": "...", "type": "e.g. colleague, sibling, romantic", "note": "..."}
@@ -70,8 +70,10 @@ Rules:
 - Use canonical character names consistently (prefer the ones already known).
 - For every character give a single ``target`` rendering of the name and use
   it consistently; this spelling will be frozen and reused in later episodes.
-- State each character's gender and standing in ``role`` (e.g. "female team
-  lead", "male CEO's mother") — target-language pronoun choice depends on it.
+- Set each character's ``gender`` to "male" or "female" ("unknown" only if truly
+  indeterminable) and give their standing in ``role`` — the target-language
+  pronoun for them depends on gender, so don't leave it unknown when the dialogue
+  or context makes it clear.
 - Propose an address row for every recurring speaker pair you can support:
   these rows are what keeps pronouns and speech level correct downstream, so
   prefer proposing one (with a note) over leaving a pair uncovered.
