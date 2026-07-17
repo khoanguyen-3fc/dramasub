@@ -7,6 +7,19 @@ translations — **direct from the source language, no English pivot**.
 The default use case is K-Drama (Korean → Vietnamese), but **languages are
 configuration, not assumptions** — source and target are set per project.
 
+> **Project status: parked (no longer developed).**
+> The pipeline works — timing-safe, consistent names/glossary, a learned bible —
+> but it hit a ceiling on the part that matters most for Vietnamese: relational
+> pronouns (`anh`/`em`/`cô`/`chị`…) that depend on *who speaks to whom* and their
+> relative age, rank, and gender. Getting those right needs reliable
+> speaker/addressee **attribution**, and the source subtitle text alone doesn't
+> carry it — when a line names no one (a bare title like `책임님`, or just
+> "I missed you"), the model has to guess, and it guesses gender/register wrong
+> often enough that the output isn't dependably better than an existing sub.
+> Closing that gap would require signals outside the text — audio diarization or
+> speaker-labelled subtitles — which is beyond what a local-first, text-only
+> pipeline can do. Left here as a working reference rather than a finished tool.
+
 ## How it works
 
 Every show is a **project**: a directory that accumulates context across
